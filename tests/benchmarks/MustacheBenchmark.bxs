@@ -1,0 +1,58 @@
+/**
+ * Non-gating performance probe. Run with the latest stable BoxLang runtime:
+ *   boxlang tests/benchmarks/MustacheBenchmark.bxs
+ *
+ * Results are median warm runs in milliseconds; this script intentionally has
+ * no timing assertions so CI remains deterministic.
+ */
+import bxModules.bxMustache.models.Mustache;
+
+function median( required array samples ) {
+	arraySort( arguments.samples, "numeric" );
+	var middle = ( arrayLen( arguments.samples ) + 1 ) / 2;
+	if ( middle == int( middle ) ) {
+		return ( arguments.samples[ middle ] + arguments.samples[ middle + 1 ] ) / 2;
+	}
+	return arguments.samples[ int( middle ) ];
+}
+
+function measure( required function operation, numeric runs = 5 ) {
+	var samples = [];
+	// Warm the JIT and module classloader before recording timings.
+	arguments.operation();
+	for ( var i = 1; i <= arguments.runs; i++ ) {
+		var started = getTickCount();
+		arguments.operation();
+		arrayAppend( samples, getTickCount() - started );
+	}
+	return median( samples );
+}
+
+function main() {
+	var renderer = new Mustache();
+	var largeTemplate = repeatString( "  {{! comment }}#char( 10 )#", 8000 );
+	var nestedTemplate = "{{##outer}}{{##inner}}{{name}}:{{.}};{{/inner}}{{/outer}}";
+	var nestedView = { outer: [ { inner: [ 1, 2, 3 ], name: "A" } ] };
+
+	println( "tokenize-8000-lines-ms=" & measure( function(){ renderer.tokenize( largeTemplate ); } ) );
+	println( "parse-nested-ms=" & measure( function(){ renderer.parse( renderer.tokenize( nestedTemplate ), nestedTemplate ); } ) );
+	println( "render-cached-ms=" & measure( function(){ renderer.render( nestedTemplate, nestedView ); } ) );
+	renderer.configureCache( enabled = false );
+	println( "render-uncached-ms=" & measure( function(){ renderer.render( nestedTemplate, nestedView ); } ) );
+
+	var threadNames = [];
+	renderer.configureCache( enabled = true, maxEntries = 32 );
+	for ( var i = 1; i <= 8; i++ ) {
+		var threadName = "mustacheBenchmark_" & i & "_" & getTickCount();
+		arrayAppend( threadNames, threadName );
+		thread action="run" name=threadName renderer=renderer template=nestedTemplate view=nestedView {
+			for ( var j = 1; j <= 100; j++ ) {
+				attributes.renderer.render( attributes.template, attributes.view );
+			}
+		};
+	}
+	thread action="join" name=arrayToList( threadNames ) timeout=30000;
+	println( "concurrent-cache-access=8x100 complete" );
+}
+
+main();

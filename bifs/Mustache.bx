@@ -1,0 +1,18 @@
+import bxModules.bxMustache.models.Mustache;
+
+/**
+ * Creates an isolated Mustache renderer.
+ *
+ * @BoxBIF( "mustache" )
+ */
+@BoxBIF( "mustache" )
+class {
+	function invoke( boolean cacheEnabled = true, numeric cacheMaxEntries = 200 ) {
+		var renderer = new Mustache();
+		renderer.configureCache(
+			enabled = arguments.cacheEnabled,
+			maxEntries = arguments.cacheMaxEntries
+		);
+		return renderer;
+	}
+}

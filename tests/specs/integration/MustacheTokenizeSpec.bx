@@ -1,0 +1,70 @@
+import bxModules.bxMustache.models.Mustache as MustacheRenderer;
+
+/**
+ * Mustache tokenize() integration BDD Test
+ */
+class extends="testbox.system.BaseSpec" {
+	function run( testResults, testBox ){
+		describe( "Mustache.tokenize() integration", function(){
+			beforeEach( function(){
+				variables.mustache = new MustacheRenderer();
+			} );
+
+			it( "tokenizes plain text with no tags", function(){
+				var tokens = variables.mustache.tokenize( "Hello" );
+
+				expect( tokens ).toHaveLength( 1 );
+				expect( tokens[ 1 ].type ).toBe( "text" );
+				expect( tokens[ 1 ].value ).toBe( "Hello" );
+				expect( tokens[ 1 ].startPos ).toBe( 1 );
+				expect( tokens[ 1 ].endPos ).toBe( 5 );
+			} );
+
+			it( "tokenizes comments, partials, sections, and inverted tags", function(){
+				var template = "{{! note}}{{> row}}{{##items}}A{{/items}}{{^empty}}B{{/empty}}";
+				var tokens   = variables.mustache.tokenize( template );
+
+				expect( tokens ).toHaveLength( 8 );
+				expect( tokens[ 1 ].type ).toBe( "comment" );
+				expect( tokens[ 2 ].type ).toBe( "partial" );
+				expect( tokens[ 2 ].name ).toBe( "row" );
+				expect( tokens[ 3 ].type ).toBe( "section_start" );
+				expect( tokens[ 3 ].name ).toBe( "items" );
+				expect( tokens[ 5 ].type ).toBe( "section_end" );
+				expect( tokens[ 5 ].name ).toBe( "items" );
+				expect( tokens[ 6 ].type ).toBe( "inverted_start" );
+				expect( tokens[ 6 ].name ).toBe( "empty" );
+			} );
+
+			it( "supports closing tags with /##name shorthand", function(){
+				var tokens = variables.mustache.tokenize( "{{##items}}X{{/##items}}" );
+
+				expect( tokens ).toHaveLength( 3 );
+				expect( tokens[ 1 ].type ).toBe( "section_start" );
+				expect( tokens[ 1 ].name ).toBe( "items" );
+				expect( tokens[ 3 ].type ).toBe( "section_end" );
+				expect( tokens[ 3 ].name ).toBe( "items" );
+			} );
+
+			it( "tokenizes variables and unescaped tags", function(){
+				var tokens = variables.mustache.tokenize( "Hi {{name}} {{{html}}} {{& raw}}" );
+
+				expect( tokens ).toHaveLength( 6 );
+				expect( tokens[ 2 ].type ).toBe( "variable" );
+				expect( tokens[ 2 ].name ).toBe( "name" );
+				expect( tokens[ 4 ].type ).toBe( "unescaped" );
+				expect( tokens[ 4 ].name ).toBe( "html" );
+				expect( tokens[ 6 ].type ).toBe( "unescaped" );
+				expect( tokens[ 6 ].name ).toBe( "raw" );
+			} );
+
+			it( "handles a large standalone template without pathological scanning", function(){
+				var template = repeatString( "  {{! comment }}#char( 10 )#", 8000 );
+				var tokens = variables.mustache.tokenize( template );
+
+				expect( tokens ).toHaveLength( 8000 );
+				expect( tokens[ 1 ].type ).toBe( "comment" );
+			} );
+		} );
+	}
+}

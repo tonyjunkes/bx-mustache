@@ -1,0 +1,77 @@
+import bxModules.bxMustache.models.Mustache;
+
+class extends="testbox.system.BaseSpec" {
+	function run() {
+		describe( "Mustache renderer", () => {
+			beforeEach( () => {
+				variables.renderer = new Mustache();
+			} );
+
+			it( "escapes variables but preserves unescaped forms", () => {
+				expect( variables.renderer.render( "{{value}}", { value: "<em>&</em>" } ) )
+					.toBe( "&lt;em&gt;&amp;&lt;" & "&" & char( 35 ) & "x2f;em&gt;" );
+				expect( variables.renderer.render( "{{{value}}}|{{&value}}", { value: "<em>" } ) )
+					.toBe( "<em>|<em>" );
+			} );
+
+			it( "resolves dotted names and the implicit iterator", () => {
+				expect( variables.renderer.render(
+					"{{person.name}}:{{##items}}[{{.}}]{{/items}}",
+					{ person: { name: "Ada" }, items: [ "one", "two" ] }
+				) ).toBe( "Ada:[one][two]" );
+			} );
+
+			it( "renders sections and inverted sections according to Mustache truthiness", () => {
+				expect( variables.renderer.render(
+					"{{##items}}{{name}},{{/items}}{{^items}}none{{/items}}",
+					{ items: [ { name: "Ada" }, { name: "Grace" } ] }
+				) ).toBe( "Ada,Grace," );
+				expect( variables.renderer.render( "{{^items}}none{{/items}}", { items: [] } ) ).toBe( "none" );
+			} );
+
+			it( "applies standalone partial indentation and dynamic partial names", () => {
+				expect( variables.renderer.render(
+					"Names:" & char( 10 ) & "  {{>card}}" & char( 10 ) & "Done",
+					{ name: "Ada" },
+					{ card: "<{{name}}>" & char( 10 ) & "<again>" & char( 10 ) }
+				) ).toBe( "Names:" & char( 10 ) & "  <Ada>" & char( 10 ) & "  <again>" & char( 10 ) & "Done" );
+				expect( variables.renderer.render(
+					"{{>*active}}",
+					{ active: "card", name: "Grace" },
+					{ card: "<{{name}}>" }
+				) ).toBe( "<Grace>" );
+			} );
+
+			it( "supports comments, standalone whitespace, and alternate delimiters", () => {
+				expect( variables.renderer.render( "A" & char( 10 ) & "  {{! ignored}}" & char( 10 ) & "B" ) )
+					.toBe( "A" & char( 10 ) & "B" );
+				expect( variables.renderer.render( "{{=<% %>=}}<%value%>", { value: "ok" } ) ).toBe( "ok" );
+			} );
+
+			it( "invokes variable and section lambdas", () => {
+				var variableOutput = variables.renderer.render(
+					"Hello {{name}}!",
+					{ name: function() { return "Lambda"; } }
+				);
+				var sectionOutput = variables.renderer.render(
+					"{{##wrap}}Hello {{name}}{{/wrap}}",
+					{
+						name: "Ada",
+						wrap: function( text, render ) { return "<b>" & render( text ) & "</b>"; }
+					}
+				);
+
+				expect( variableOutput ).toBe( "Hello Lambda!" );
+				expect( sectionOutput ).toBe( "<b>Hello Ada</b>" );
+			} );
+
+			it( "renders parent templates with block overrides in the current context", () => {
+				expect( variables.renderer.render(
+					"{{<layout}}{{$body}}Hello {{name}}{{/body}}{{/layout}}",
+					{ name: "Ada" },
+					{ layout: "<main>{{$body}}Default{{/body}}</main>" }
+				) ).toBe( "<main>Hello Ada</main>" );
+			} );
+		} );
+	}
+}

@@ -1,0 +1,95 @@
+/**
+ * Stateless utilities shared by tokenization, parsing, and rendering.
+ */
+class {
+	public static numeric function getLineStartPos( required string template, required numeric position ) {
+		var zeroBasedEnd = min( len( arguments.template ) - 1, arguments.position - 2 );
+		if ( zeroBasedEnd < 0 ) {
+			return 1;
+		}
+
+		var lastLineFeed = arguments.template.lastIndexOf( char( 10 ), zeroBasedEnd );
+		var lastCarriageReturn = arguments.template.lastIndexOf( char( 13 ), zeroBasedEnd );
+
+		return max( lastLineFeed, lastCarriageReturn ) + 2;
+	}
+
+	public static numeric function findLastPosition( required string needle, required string haystack ) {
+		var needleLength = len( arguments.needle );
+		if ( needleLength == 0 || needleLength > len( arguments.haystack ) ) {
+			return 0;
+		}
+
+		var lastIndex = arguments.haystack.lastIndexOf( arguments.needle );
+		return lastIndex < 0 ? 0 : lastIndex + 1;
+	}
+
+	public static numeric function findNextLineBreakPos( required string template, required numeric startPos ) {
+		if ( arguments.startPos > len( arguments.template ) ) {
+			return 0;
+		}
+
+		var nextLineFeed = find( char( 10 ), arguments.template, arguments.startPos );
+		var nextCarriageReturn = find( char( 13 ), arguments.template, arguments.startPos );
+
+		if ( nextLineFeed == 0 ) {
+			return nextCarriageReturn;
+		}
+
+		if ( nextCarriageReturn == 0 ) {
+			return nextLineFeed;
+		}
+
+		return min( nextLineFeed, nextCarriageReturn );
+	}
+
+	public static numeric function getLineBreakLength( required string template, required numeric lineBreakPos ) {
+		if (
+			mid( arguments.template, arguments.lineBreakPos, 1 ) == char( 13 )
+			&& arguments.lineBreakPos < len( arguments.template )
+			&& mid( arguments.template, arguments.lineBreakPos + 1, 1 ) == char( 10 )
+		) {
+			return 2;
+		}
+
+		return 1;
+	}
+
+	public static boolean function containsOnlyStandaloneWhitespace( required string value ) {
+		return reFind( "[^ " & char( 9 ) & "]", arguments.value ) == 0;
+	}
+
+	public static boolean function containsLineBreak( required string value ) {
+		return find( char( 10 ), arguments.value ) > 0 || find( char( 13 ), arguments.value ) > 0;
+	}
+
+	public static string function normalizeBlockSourceText(
+		required string templateText,
+		boolean stripLeadingLineBreak = false
+	) {
+		var normalizedText = arguments.templateText;
+		if ( !arguments.stripLeadingLineBreak || !len( normalizedText ) ) {
+			return normalizedText;
+		}
+
+		if ( left( normalizedText, 2 ) == char( 13 ) & char( 10 ) ) {
+			return mid( normalizedText, 3, len( normalizedText ) - 2 );
+		}
+
+		if ( left( normalizedText, 1 ) == char( 13 ) || left( normalizedText, 1 ) == char( 10 ) ) {
+			return mid( normalizedText, 2, len( normalizedText ) - 1 );
+		}
+
+		return normalizedText;
+	}
+
+	public static boolean function endsWithLineBreak( required string value ) {
+		if ( !len( arguments.value ) ) {
+			return false;
+		}
+
+		return right( arguments.value, 1 ) == char( 10 )
+			|| right( arguments.value, 1 ) == char( 13 )
+			|| right( arguments.value, 2 ) == char( 13 ) & char( 10 );
+	}
+}

@@ -1,0 +1,10 @@
+{
+  "modulesDirectory": [
+    "${user-dir}/boxlang_modules"
+  ],
+  "modules": {
+    "bxMustache": {
+      "enabled": true
+    }
+  }
+}

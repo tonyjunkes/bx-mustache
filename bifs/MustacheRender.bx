@@ -1,0 +1,37 @@
+import bxModules.bxMustache.models.Mustache;
+
+/**
+ * Renders Mustache template text with the module's shared, configured renderer.
+ */
+@BoxBIF( [ "mustacheRender", "renderMustache" ] )
+class {
+	property name="moduleRecord";
+
+	variables.renderer = new Mustache();
+	variables.cacheConfigured = false;
+	variables.configurationLockName = "Mustache.BIF.Renderer." & replace( createUUID(), "-", "", "all" );
+
+	function invoke( required string template, any view = {}, struct partials = {} ) {
+		return _getRenderer().render(
+			template = arguments.template,
+			view = arguments.view,
+			partials = arguments.partials
+		);
+	}
+
+	private Mustache function _getRenderer() {
+		if ( !variables.cacheConfigured ) {
+			bx:lock name=variables.configurationLockName type="exclusive" timeout="5" {
+				if ( !variables.cacheConfigured ) {
+					variables.renderer.configureCache(
+						enabled = variables.moduleRecord.settings.cacheEnabled ?: true,
+						maxEntries = variables.moduleRecord.settings.cacheMaxEntries ?: 200
+					);
+					variables.cacheConfigured = true;
+				}
+			}
+		}
+
+		return variables.renderer;
+	}
+}

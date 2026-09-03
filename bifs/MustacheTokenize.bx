@@ -1,0 +1,19 @@
+import bxModules.bxMustache.models.Tokenizer;
+
+/**
+ * Returns the low-level token stream for a Mustache template.
+ *
+ * @BoxBIF( "mustacheTokenize" )
+ */
+@BoxBIF( "mustacheTokenize" )
+class {
+	variables.tokenizer = new Tokenizer();
+
+	function invoke(
+		required string template,
+		string openDelimiter = "{{",
+		string closeDelimiter = "}}"
+	) {
+		return variables.tokenizer.tokenize( argumentCollection = arguments );
+	}
+}

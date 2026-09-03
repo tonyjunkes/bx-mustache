@@ -1,0 +1,9 @@
+/**
+ * Test-only mappings used by TestBox's native BoxLang runner.
+ */
+class {
+	this.name = "bx-mustache-tests";
+	this.mappings = {
+		"tests": getDirectoryFromPath( getCurrentTemplatePath() )
+	};
+}

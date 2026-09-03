@@ -1,0 +1,21 @@
+class {
+	function main() {
+		var result = mustacheRender( "Hello {{name}}!", { name: "installed module" } );
+		if ( result != "Hello installed module!" ) {
+			throw( message = "mustacheRender() did not render the installed module." );
+		}
+
+		if ( renderMustache( "{{name}}", { name: "alias" } ) != "alias" ) {
+			throw( message = "renderMustache() alias was not registered." );
+		}
+
+		var renderer = mustache( cacheMaxEntries = 1 );
+		renderer.render( "first" );
+		renderer.render( "second" );
+		if ( renderer.getCacheStats().currentEntries != 1 ) {
+			throw( message = "mustache() did not configure the renderer cache." );
+		}
+
+		writeOutput( "bx-mustache installed consumer passed" );
+	}
+}

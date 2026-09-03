@@ -1,0 +1,24 @@
+/**
+ * Native BoxLang module descriptor for bx-mustache.
+ */
+class {
+	property name="moduleRecord";
+	property name="boxRuntime";
+	property name="log";
+
+	this.version = "0.1.0";
+	this.mapping = "bxMustache";
+	this.author = "Tony Junkes";
+	this.description = "A native Mustache template engine for BoxLang.";
+	this.webURL = "https://github.com/tonyjunkes/bx-mustache";
+	this.enabled = true;
+	this.dependencies = [];
+
+	function configure() {
+		// These defaults can be overridden by the bx-mustache module entry in boxlang.json.
+		settings = {
+			cacheEnabled: true,
+			cacheMaxEntries: 200
+		};
+	}
+}

@@ -1,0 +1,27 @@
+class extends="testbox.system.BaseSpec" {
+	function run() {
+		describe( "bx-mustache BIFs", () => {
+			it( "renders templates through the shared BIF", () => {
+				expect( mustacheRender( "Hello {{name}}!", { name: "BoxLang" } ) )
+					.toBe( "Hello BoxLang!" );
+				expect( renderMustache( "{{name}}", { name: "Alias" } ) ).toBe( "Alias" );
+			} );
+
+			it( "creates isolated renderers through mustache", () => {
+				var renderer = mustache( cacheMaxEntries = 1 );
+				renderer.render( "first" );
+				renderer.render( "second" );
+
+				expect( renderer.getCacheStats().currentEntries ).toBe( 1 );
+			} );
+
+			it( "exposes tokenizer and parser inspection BIFs", () => {
+				var tokens = mustacheTokenize( "Hello {{name}}" );
+				var ast = mustacheParse( tokens, "Hello {{name}}" );
+
+				expect( tokens[ 2 ].name ).toBe( "name" );
+				expect( ast[ 2 ].type ).toBe( "variable" );
+			} );
+		} );
+	}
+}

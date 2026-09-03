@@ -1,0 +1,22 @@
+.vscode
+.idea
+
+# Artifacts and temp folders
+.artifacts
+.tmp
+.DS_Store
+
+# Engine + Secrets
+.env
+.engine
+
+# Tests
+testbox
+tests/results
+tests/.boxlang
+
+# modules
+modules
+
+# log files
+logs

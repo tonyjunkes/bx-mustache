@@ -1,0 +1,15 @@
+import bxModules.bxMustache.models.Parser;
+
+/**
+ * Converts a Mustache token stream into mustache's AST.
+ *
+ * @BoxBIF( "mustacheParse" )
+ */
+@BoxBIF( "mustacheParse" )
+class {
+	variables.parser = new Parser();
+
+	function invoke( required array tokens, required string template ) {
+		return variables.parser.parse( argumentCollection = arguments );
+	}
+}

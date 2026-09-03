@@ -1,0 +1,7 @@
+class {
+	function init( string name = "", string role = "" ) {
+		this.name = arguments.name;
+		this.role = arguments.role;
+		return this;
+	}
+}

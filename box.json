@@ -1,0 +1,49 @@
+{
+    "name":"bx-mustache",
+    "version":"0.1.0",
+    "author":"Tony Junkes",
+    "homepage":"https://github.com/tonyjunkes/bx-mustache",
+    "documentation":"https://github.com/tonyjunkes/bx-mustache",
+    "repository":{
+        "type":"git",
+        "URL":"https://github.com/tonyjunkes/bx-mustache"
+    },
+    "bugs":"https://github.com/tonyjunkes/bx-mustache/issues",
+    "slug":"bx-mustache",
+    "shortDescription":"A Mustache-inspired template engine for BoxLang",
+    "type":"boxlang-modules",
+    "keywords":[
+        "boxlang",
+        "template",
+        "mustache"
+    ],
+    "boxlang":{
+        "minimumVersion":"1.16.0",
+        "moduleName":"bxMustache"
+    },
+    "private":false,
+    "projectURL":"https://github.com/tonyjunkes/bx-mustache",
+    "license":[
+        {
+            "type":"MIT",
+            "URL":"https://github.com/tonyjunkes/bx-mustache/LICENSE"
+        }
+    ],
+    "dependencies":{},
+    "devDependencies":{
+        "testbox":"7.1.0-snapshot"
+    },
+    "installPaths":{
+        "testbox":"testbox/"
+    },
+    "ignore":[
+        "**/.*",
+        "testbox/**",
+        "tests/**",
+        "docs/**/*.*",
+        "AGENTS.md"
+    ],
+    "scripts":{
+        "test":"run boxlang --bx-home tests/.boxlang --bx-config tests/boxlang.json testbox/system/runners/BoxLangRunner.bx --directory=tests.specs --stream --write-report=false --properties-summary=false --stacktrace=short"
+    }
+}

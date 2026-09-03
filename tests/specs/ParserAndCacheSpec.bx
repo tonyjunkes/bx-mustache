@@ -1,0 +1,46 @@
+import bxModules.bxMustache.models.Mustache;
+
+class extends="testbox.system.BaseSpec" {
+	function run() {
+		describe( "Mustache tokenizer, parser, and cache", () => {
+			it( "exposes tokenizer and parser output through the renderer", () => {
+				var renderer = new Mustache();
+				var tokens = renderer.tokenize( "Hello {{name}}" );
+				var ast = renderer.parse( tokens, "Hello {{name}}" );
+
+				expect( tokens[ 1 ].type ).toBe( "text" );
+				expect( tokens[ 2 ].type ).toBe( "variable" );
+				expect( ast[ 2 ].name ).toBe( "name" );
+			} );
+
+			it( "fails closed for malformed templates", () => {
+				var renderer = new Mustache();
+				expect( () => renderer.render( "{{name" ) ).toThrow( "Mustache.TokenizerUnclosedTagException" );
+				expect( () => renderer.render( "{{##one}}{{/two}}" ) ).toThrow( "Mustache.ParserSectionException" );
+			} );
+
+			it( "maintains the configured LRU cache limit", () => {
+				var renderer = new Mustache();
+				renderer.configureCache( maxEntries = 2 );
+				renderer.render( "first" );
+				renderer.render( "second" );
+				renderer.render( "third" );
+
+				var stats = renderer.getCacheStats();
+				expect( stats.enabled ).toBeTrue();
+				expect( stats.maxEntries ).toBe( 2 );
+				expect( stats.currentEntries ).toBe( 2 );
+			} );
+
+			it( "bypasses and clears entries when caching is disabled", () => {
+				var renderer = new Mustache();
+				renderer.render( "cached" );
+				renderer.configureCache( enabled = false );
+
+				var stats = renderer.getCacheStats();
+				expect( stats.enabled ).toBeFalse();
+				expect( stats.currentEntries ).toBe( 0 );
+			} );
+		} );
+	}
+}

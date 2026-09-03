@@ -1,0 +1,145 @@
+import bxModules.bxMustache.models.Mustache as MustacheRenderer;
+
+/**
+ * Mustache partials compliance BDD Test
+ */
+class extends="testbox.system.BaseSpec" {
+	function run( testResults, testBox ){
+		describe( "Mustache partials spec", function(){
+			beforeEach( function(){
+				variables.mustache = new MustacheRenderer();
+			} );
+
+			it( "Basic Behavior: The greater-than operator should expand to the named partial.", function(){
+				var output = variables.mustache.render(
+					'"{{>text}}"',
+					{},
+					{ text: "from partial" }
+				);
+
+				expect( output ).toBe( '"from partial"' );
+			} );
+
+			it( "Failed Lookup: The empty string should be used when the named partial is not found.", function(){
+				var output = variables.mustache.render(
+					'"{{>text}}"',
+					{},
+					{}
+				);
+
+				expect( output ).toBe( '""' );
+			} );
+
+			it( "Context: The greater-than operator should operate within the current context.", function(){
+				var output = variables.mustache.render(
+					'"{{>partial}}"',
+					{ text: "content" },
+					{ partial: "*{{text}}*" }
+				);
+
+				expect( output ).toBe( '"*content*"' );
+			} );
+
+			it( "Recursion: The greater-than operator should properly recurse.", function(){
+				var output = variables.mustache.render(
+					"{{>node}}",
+					{
+						content: "X",
+						nodes: [
+							{
+								content: "Y",
+								nodes: []
+							}
+						]
+					},
+					{ node: "{{content}}<{{##nodes}}{{>node}}{{/nodes}}>" }
+				);
+
+				expect( output ).toBe( "X<Y<>>" );
+			} );
+
+			it( "Nested: The greater-than operator should work from within partials.", function(){
+				var output = variables.mustache.render(
+					"{{>outer}}",
+					{ a: "hello", b: "world" },
+					{
+						outer: "*{{a}} {{>inner}}*",
+						inner: "{{b}}!"
+					}
+				);
+
+				expect( output ).toBe( "*hello world!*" );
+			} );
+
+			it( "Surrounding Whitespace: The greater-than operator should not alter surrounding whitespace.", function(){
+				var output = variables.mustache.render(
+					"| {{>partial}} |",
+					{},
+					{ partial: char( 9 ) & "|" & char( 9 ) }
+				);
+
+				expect( output ).toBe( "| " & char( 9 ) & "|" & char( 9 ) & " |" );
+			} );
+
+			it( "Inline Indentation: Whitespace should be left untouched.", function(){
+				var output = variables.mustache.render(
+					"  {{data}}  {{> partial}}" & char( 10 ),
+					{ data: "|" },
+					{ partial: ">" & char( 10 ) & ">" }
+				);
+
+				expect( output ).toBe( "  |  >" & char( 10 ) & ">" & char( 10 ) );
+			} );
+
+			it( 'Standalone Line Endings: "\r\n" should be considered a newline for standalone tags.', function(){
+				var output = variables.mustache.render(
+					"|" & char( 13 ) & char( 10 ) & "{{>partial}}" & char( 13 ) & char( 10 ) & "|",
+					{},
+					{ partial: ">" }
+				);
+
+				expect( output ).toBe( "|" & char( 13 ) & char( 10 ) & ">|" );
+			} );
+
+			it( "Standalone Without Previous Line: Standalone tags should not require a newline to precede them.", function(){
+				var output = variables.mustache.render(
+					"  {{>partial}}" & char( 10 ) & ">",
+					{},
+					{ partial: ">" & char( 10 ) & ">" }
+				);
+
+				expect( output ).toBe( "  >" & char( 10 ) & "  >>" );
+			} );
+
+			it( "Standalone Without Newline: Standalone tags should not require a newline to follow them.", function(){
+				var output = variables.mustache.render(
+					">" & char( 10 ) & "  {{>partial}}",
+					{},
+					{ partial: ">" & char( 10 ) & ">" }
+				);
+
+				expect( output ).toBe( ">" & char( 10 ) & "  >" & char( 10 ) & "  >" );
+			} );
+
+			it( "Standalone Indentation: Each line of the partial should be indented before rendering.", function(){
+				var output = variables.mustache.render(
+					char( 92 ) & char( 10 ) & " {{>partial}}" & char( 10 ) & "/" & char( 10 ),
+					{ content: "<" & char( 10 ) & "->" },
+					{ partial: "|" & char( 10 ) & "{{{content}}}" & char( 10 ) & "|" & char( 10 ) }
+				);
+
+				expect( output ).toBe( char( 92 ) & char( 10 ) & " |" & char( 10 ) & " <" & char( 10 ) & "->" & char( 10 ) & " |" & char( 10 ) & "/" & char( 10 ) );
+			} );
+
+			it( "Padding Whitespace: Superfluous in-tag whitespace should be ignored.", function(){
+				var output = variables.mustache.render(
+					"|{{> partial }}|",
+					{ boolean: true },
+					{ partial: "[]" }
+				);
+
+				expect( output ).toBe( "|[]|" );
+			} );
+		} );
+	}
+}

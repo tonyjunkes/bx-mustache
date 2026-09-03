@@ -1,0 +1,168 @@
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+
+/**
+ * Thread-safe, in-memory LRU cache for parsed template ASTs.
+ *
+ * LinkedHashMap supplies compact storage while BoxLang locks protect reads and
+ * writes. A small Java order list records recency explicitly because dynamic
+ * Java collection iteration can differ across BoxLang runtimes. The cache remains
+ * instance-local so isolated renderers do not share lifecycle or eviction state.
+ */
+class implements="ITemplateCache" {
+	variables._entries = new LinkedHashMap( 16, 0.75, true );
+	variables._lruOrder = new ArrayList();
+	variables._cacheMaxEntries = 200;
+	variables._cacheEnabled = true;
+	variables._cacheGeneration = 0;
+	variables._cacheLockName = "Mustache.TemplateCache." & replace( createUUID(), "-", "", "all" );
+
+	public void function configure(
+		boolean enabled = true,
+		numeric maxEntries = 200
+	) {
+		bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
+			variables._cacheEnabled = arguments.enabled;
+			variables._cacheMaxEntries = max( 1, int( arguments.maxEntries ) );
+			variables._cacheGeneration++;
+
+			if ( !variables._cacheEnabled ) {
+				_resetState();
+			} else {
+				_evictIfNeeded();
+			}
+		}
+	}
+
+	public void function clear() {
+		bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
+			variables._cacheGeneration++;
+			_resetState();
+		}
+	}
+
+	public struct function getStats() {
+		var stats = {};
+		bx:lock name=variables._cacheLockName type="readonly" timeout="5" {
+			stats = {
+				enabled: variables._cacheEnabled,
+				maxEntries: variables._cacheMaxEntries,
+				currentEntries: variables._entries.size()
+			};
+		}
+		return stats;
+	}
+
+	public array function getOrSet(
+		required string template,
+		required string openDelimiter,
+		required string closeDelimiter,
+		required function parseFn
+	) {
+		var cacheKey = _buildKey( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
+		var cachedAst = [];
+		var hasCached = false;
+		var cacheEnabled = false;
+
+		// A hit is moved to the tail, so this must be exclusive.
+		bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
+			cacheEnabled = variables._cacheEnabled;
+			if ( cacheEnabled && variables._entries.containsKey( cacheKey ) ) {
+				hasCached = true;
+				cachedAst = variables._entries.get( cacheKey );
+				_touchKey( cacheKey, cachedAst );
+			}
+		}
+
+		if ( !cacheEnabled ) {
+			return arguments.parseFn( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
+		}
+
+		if ( hasCached ) {
+			return cachedAst;
+		}
+
+		// Coalesce only identical misses. Different templates retain parallelism.
+		var keyLockName = variables._cacheLockName & ".key." & cacheKey.hashCode();
+		var result = [];
+		var hasResult = false;
+
+		bx:lock name=keyLockName type="exclusive" timeout="5" {
+			var currentGeneration = 0;
+			var currentEnabled = false;
+
+			bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
+				currentEnabled = variables._cacheEnabled;
+				currentGeneration = variables._cacheGeneration;
+				if ( currentEnabled && variables._entries.containsKey( cacheKey ) ) {
+					result = variables._entries.get( cacheKey );
+					_touchKey( cacheKey, result );
+					hasResult = true;
+				}
+			}
+
+			if ( !hasResult ) {
+				if ( !currentEnabled ) {
+					result = arguments.parseFn( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
+					hasResult = true;
+				} else {
+					var ast = arguments.parseFn( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
+					result = ast;
+					hasResult = true;
+
+					bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
+						if (
+							variables._cacheEnabled &&
+							variables._cacheGeneration == currentGeneration
+						) {
+							if ( !variables._entries.containsKey( cacheKey ) ) {
+								variables._entries.put( cacheKey, ast );
+								variables._lruOrder.remove( cacheKey );
+								variables._lruOrder.add( cacheKey );
+							}
+							_evictIfNeeded();
+						}
+					}
+				}
+			}
+		}
+
+		return result;
+	}
+
+	private void function _resetState() {
+		variables._entries.clear();
+		variables._lruOrder.clear();
+	}
+
+	private string function _buildKey(
+		required string template,
+		required string openDelimiter,
+		required string closeDelimiter
+	) {
+		// Length-prefix each component so arbitrary delimiter/template content remains
+		// an exact, collision-free composite key without hashing or copying prefixes.
+		return len( arguments.openDelimiter ) & ":" & arguments.openDelimiter
+			& len( arguments.closeDelimiter ) & ":" & arguments.closeDelimiter
+			& len( arguments.template ) & ":" & arguments.template;
+	}
+
+	private void function _touchKey( required any cacheKey, required any value ) {
+		variables._entries.remove( arguments.cacheKey );
+		variables._entries.put( arguments.cacheKey, arguments.value );
+		variables._lruOrder.remove( arguments.cacheKey );
+		variables._lruOrder.add( arguments.cacheKey );
+	}
+
+	private void function _evictIfNeeded() {
+		while ( variables._entries.size() > variables._cacheMaxEntries && variables._lruOrder.size() > 0 ) {
+			var oldestKey = variables._lruOrder.get( 0 );
+			variables._lruOrder.remove( 0 );
+			if ( !variables._entries.containsKey( oldestKey ) ) {
+				break;
+			}
+			variables._entries.remove( oldestKey );
+		}
+	}
+
+}
