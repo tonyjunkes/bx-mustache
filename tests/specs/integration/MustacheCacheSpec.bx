@@ -41,6 +41,14 @@ class extends="testbox.system.BaseSpec" {
 				expect( secondStats.currentEntries ).toBe( 1 );
 			} );
 
+			it( "keeps templates differing only in case distinct across cache hits", function(){
+				for ( var i = 1; i <= 2; i++ ) {
+					expect( compare( variables.mustache.render( "Hello {{name}}", { name: "Ada" } ), "Hello Ada" ) ).toBe( 0 );
+					expect( compare( variables.mustache.render( "hello {{name}}", { name: "Ada" } ), "hello Ada" ) ).toBe( 0 );
+				}
+				expect( variables.mustache.getCacheStats().currentEntries ).toBe( 2 );
+			} );
+
 			it( "retains recently reused templates when evicting entries", function(){
 				var instrumentedmustache = new InstrumentedMustacheFixture();
 				instrumentedmustache.clearCache();

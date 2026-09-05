@@ -56,6 +56,8 @@ The renderer covers the official v1.4.3 corpus, including its optional lambdas, 
 
 Templates and partials are strings. Your application owns file loading, so read a template with `fileRead()` before passing its contents to the renderer.
 
+Object lookup supports public fields and zero-argument `getName()` / `isName()` accessors. Arbitrary Java methods are not invoked by template names. BoxLang function values can be used as lambdas. Null intermediate values in dotted paths render as missing values.
+
 ## Usage
 
 ### Global BIFs

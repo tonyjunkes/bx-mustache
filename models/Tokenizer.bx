@@ -244,7 +244,7 @@ class {
 
 	private struct function _parseDelimiterPair( required string content ) {
 		var delimiterDefinition = trim( mid( arguments.content, 2, len( arguments.content ) - 2 ) );
-		var normalizedDefinition = trim( reReplace( delimiterDefinition, "\\s+", " ", "all" ) );
+		var normalizedDefinition = trim( reReplace( delimiterDefinition, "\s+", " ", "all" ) );
 		var delimiterParts = len( normalizedDefinition ) ? listToArray( normalizedDefinition, " " ) : [];
 
 		if ( arrayLen( delimiterParts ) != 2 ) {

@@ -45,6 +45,34 @@ class extends="testbox.system.BaseSpec" {
 				expect( output ).toBe( "Ada|Linus" );
 			} );
 
+			it( "does not invoke arbitrary Java methods during lookup", function(){
+				var buffer = new java.lang.StringBuilder( "abc" );
+				expect( variables.mustache.render( "{{buffer.reverse}}", { buffer: buffer } ) ).toBe( "" );
+				expect( buffer.toString() ).toBe( "abc" );
+			} );
+
+			it( "treats null intermediate paths and null array items as missing", function(){
+				expect( variables.mustache.render(
+					"{{user.profile.name}}|{{##items}}[{{name}}:{{.}}]{{/items}}",
+					{ user: { profile: null }, items: [ null ], name: "parent" }
+				) ).toBe( "|[parent:]" );
+			} );
+
+			it( "accepts tabs between changed delimiters", function(){
+				expect( variables.mustache.render( "{{=<%#char( 9 )#%>=}}<%name%>", { name: "Ada" } ) ).toBe( "Ada" );
+			} );
+
+			it( "dedents inherited blocks with tabs without stripping text beginning with t", function(){
+				for ( var newline in [ char( 10 ), char( 13 ) & char( 10 ) ] ) {
+					for ( var indentation in [ char( 9 ), "  ", "" ] ) {
+						expect( variables.mustache.render(
+							"{{<layout}}{{$body}}#newline##indentation#text#newline#{{/body}}{{/layout}}",
+							{}, { layout: "{{$body}}default{{/body}}" }
+						) ).toBe( "text#newline#" );
+					}
+				}
+			} );
+
 			it( "resolves values from native objects via dynamic path lookup", function(){
 				var person = new DynamicLookupFixtureClass()
 					.init( "Ada", "Architect" );

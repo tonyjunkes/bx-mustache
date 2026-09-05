@@ -10,6 +10,13 @@ class {
 		}
 
 		var renderer = mustache( cacheMaxEntries = 1 );
+		var buffer = new java.lang.StringBuilder( "abc" );
+		if ( renderer.render( "{{buffer.reverse}}", { buffer: buffer } ) != "" || buffer.toString() != "abc" ) {
+			throw( message = "Template lookup invoked an arbitrary Java method." );
+		}
+		if ( renderer.render( "{{user.profile.name}}", { user: { profile: null } } ) != "" ) {
+			throw( message = "Null intermediate paths did not render as missing." );
+		}
 		renderer.render( "first" );
 		renderer.render( "second" );
 		if ( renderer.getCacheStats().currentEntries != 1 ) {

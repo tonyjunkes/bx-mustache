@@ -239,7 +239,7 @@ class {
 				continue;
 			}
 
-			var lineIndentMatch = reFind( "^[ \\t]*", line, 1, true );
+			var lineIndentMatch = reFind( "^[ \t]*", line, 1, true );
 			var lineIndent = lineIndentMatch.len[ 1 ] > 0 ? left( line, lineIndentMatch.len[ 1 ] ) : "";
 
 			if ( !hasContent ) {

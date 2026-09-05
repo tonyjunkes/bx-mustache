@@ -74,6 +74,17 @@ class extends="testbox.system.BaseSpec" {
 			} );
 
 			describe( "getOrSet()", function(){
+				it( "keeps case-sensitive template and delimiter keys distinct", function(){
+					var calls = 0;
+					var parseFn = function( t, o, c ) { calls++; return [ t, o, c ]; };
+					for ( var keyParts in [ [ "A", "x", "y" ], [ "a", "x", "y" ], [ "A", "X", "y" ], [ "A", "x", "Y" ] ] ) {
+						expect( variables.cache.getOrSet( keyParts[ 1 ], keyParts[ 2 ], keyParts[ 3 ], parseFn ) ).toBe( keyParts );
+						expect( variables.cache.getOrSet( keyParts[ 1 ], keyParts[ 2 ], keyParts[ 3 ], parseFn ) ).toBe( keyParts );
+					}
+					expect( calls ).toBe( 4 );
+					expect( variables.cache.getStats().currentEntries ).toBe( 4 );
+				} );
+
 				it( "calls parseFn and caches the result", function(){
 					var callCount = 0;
 					var parseFn = function( t, o, c ){

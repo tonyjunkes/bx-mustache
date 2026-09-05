@@ -67,6 +67,9 @@ class {
 
 		for ( var i = 1; i <= arrayLen( arguments.parts ); i++ ) {
 			var key = arguments.parts[ i ];
+			if ( isNull( current ) ) {
+				return { found: false, value: "" };
+			}
 
 			if ( isStruct( current ) && structKeyExists( current, key ) ) {
 				current = current[ key ];
@@ -159,7 +162,8 @@ class {
 			// Values without BoxLang/Java member metadata simply have no dynamic path step.
 			return defaultResult;
 		}
-		for ( var methodName in [ arguments.key, accessorMethodNames[ 1 ], accessorMethodNames[ 2 ] ] ) {
+
+		for ( var methodName in accessorMethodNames ) {
 			var methodResult = _findJavaZeroArgMethod( javaClass, methodName );
 			if ( methodResult.found ) {
 				return {

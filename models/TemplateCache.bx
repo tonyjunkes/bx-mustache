@@ -1,17 +1,13 @@
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-
 /**
  * Thread-safe, in-memory LRU cache for parsed template ASTs.
  *
- * LinkedHashMap supplies compact storage while BoxLang locks protect reads and
- * writes. A small Java order list records recency explicitly because dynamic
- * Java collection iteration can differ across BoxLang runtimes. The cache remains
+ * A ordered, case-sensitive struct stores both entries and recency.
+ * BoxLang locks protect reads and writes; deleting and reinserting a hit moves
+ * it to the tail without scanning a separate order list. The cache remains
  * instance-local so isolated renderers do not share lifecycle or eviction state.
  */
 class implements="ITemplateCache" {
-	variables._entries = new LinkedHashMap( 16, 0.75, true );
-	variables._lruOrder = new ArrayList();
+	variables._entries = structNew( "ordered-casesensitive" );
 	variables._cacheMaxEntries = 200;
 	variables._cacheEnabled = true;
 	variables._cacheGeneration = 0;
@@ -47,7 +43,7 @@ class implements="ITemplateCache" {
 			stats = {
 				enabled: variables._cacheEnabled,
 				maxEntries: variables._cacheMaxEntries,
-				currentEntries: variables._entries.size()
+				currentEntries: structCount( variables._entries )
 			};
 		}
 		return stats;
@@ -67,9 +63,9 @@ class implements="ITemplateCache" {
 		// A hit is moved to the tail, so this must be exclusive.
 		bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
 			cacheEnabled = variables._cacheEnabled;
-			if ( cacheEnabled && variables._entries.containsKey( cacheKey ) ) {
+			if ( cacheEnabled && structKeyExists( variables._entries, cacheKey ) ) {
 				hasCached = true;
-				cachedAst = variables._entries.get( cacheKey );
+				cachedAst = variables._entries[ cacheKey ];
 				_touchKey( cacheKey, cachedAst );
 			}
 		}
@@ -94,8 +90,8 @@ class implements="ITemplateCache" {
 			bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
 				currentEnabled = variables._cacheEnabled;
 				currentGeneration = variables._cacheGeneration;
-				if ( currentEnabled && variables._entries.containsKey( cacheKey ) ) {
-					result = variables._entries.get( cacheKey );
+				if ( currentEnabled && structKeyExists( variables._entries, cacheKey ) ) {
+					result = variables._entries[ cacheKey ];
 					_touchKey( cacheKey, result );
 					hasResult = true;
 				}
@@ -115,10 +111,8 @@ class implements="ITemplateCache" {
 							variables._cacheEnabled &&
 							variables._cacheGeneration == currentGeneration
 						) {
-							if ( !variables._entries.containsKey( cacheKey ) ) {
-								variables._entries.put( cacheKey, ast );
-								variables._lruOrder.remove( cacheKey );
-								variables._lruOrder.add( cacheKey );
+							if ( !structKeyExists( variables._entries, cacheKey ) ) {
+								variables._entries[ cacheKey ] = ast;
 							}
 							_evictIfNeeded();
 						}
@@ -131,8 +125,7 @@ class implements="ITemplateCache" {
 	}
 
 	private void function _resetState() {
-		variables._entries.clear();
-		variables._lruOrder.clear();
+		structClear( variables._entries );
 	}
 
 	private string function _buildKey(
@@ -148,20 +141,19 @@ class implements="ITemplateCache" {
 	}
 
 	private void function _touchKey( required any cacheKey, required any value ) {
-		variables._entries.remove( arguments.cacheKey );
-		variables._entries.put( arguments.cacheKey, arguments.value );
-		variables._lruOrder.remove( arguments.cacheKey );
-		variables._lruOrder.add( arguments.cacheKey );
+		structDelete( variables._entries, arguments.cacheKey );
+		variables._entries[ arguments.cacheKey ] = arguments.value;
 	}
 
 	private void function _evictIfNeeded() {
-		while ( variables._entries.size() > variables._cacheMaxEntries && variables._lruOrder.size() > 0 ) {
-			var oldestKey = variables._lruOrder.get( 0 );
-			variables._lruOrder.remove( 0 );
-			if ( !variables._entries.containsKey( oldestKey ) ) {
-				break;
-			}
-			variables._entries.remove( oldestKey );
+		var excess = structCount( variables._entries ) - variables._cacheMaxEntries;
+		if ( excess <= 0 ) {
+			return;
+		}
+
+		var keys = structKeyArray( variables._entries );
+		for ( var i = 1; i <= excess; i++ ) {
+			structDelete( variables._entries, keys[ i ] );
 		}
 	}
 
