@@ -28,7 +28,7 @@ jobs:
       - name: Install development dependencies
         run: box install
 
-      - name: Run native TestBox suite
+      - name: Run TestBox
         run: box run-script test
 
       - name: Verify installed consumer and BIFs

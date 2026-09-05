@@ -44,6 +44,6 @@
         "AGENTS.md"
     ],
     "scripts":{
-        "test":"run boxlang --bx-home tests/.boxlang --bx-config tests/boxlang.json testbox/system/runners/BoxLangRunner.bx --directory=tests.specs --stream --write-report=false --properties-summary=false --stacktrace=short"
+        "test":"boxlang cli --bx-config tests/boxlang.json testbox/system/runners/BoxLangRunner.bx --directory=tests.specs --stream --write-report=false --properties-summary=false --stacktrace=short"
     }
 }

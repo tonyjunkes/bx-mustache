@@ -108,7 +108,7 @@ The cache is enabled with a maximum of 200 parsed templates by default. Renderer
 
 ## Contributing
 
-Install CommandBox and the latest stable BoxLang runtime, then install the development dependencies and run the native TestBox suite:
+Install CommandBox, then install the development dependencies and run the TestBox suite:
 
 ```bash
 box install
