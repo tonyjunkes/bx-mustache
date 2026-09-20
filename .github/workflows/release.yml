@@ -132,5 +132,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "GitHub release $TAG already exists."
           else
-            gh release create "$TAG" --verify-tag --title "bx-mustache $VERSION" --generate-notes
+            gh release create "$TAG" --verify-tag --title "$VERSION" --generate-notes
           fi
