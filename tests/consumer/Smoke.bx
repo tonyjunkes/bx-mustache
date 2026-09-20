@@ -1,15 +1,49 @@
-class {
+import bxModules.bxMustache.models.Parser as MustacheParser;
+
+class accessors=true {
+	property name="displayName" default="installed module";
+	variables.privateToken = "must stay private";
+
 	function main() {
 		var result = mustacheRender( "Hello {{name}}!", { name: "installed module" } );
-		if ( result != "Hello installed module!" ) {
+		if ( compare( result, "Hello installed module!" ) != 0 ) {
 			throw( message = "mustacheRender() did not render the installed module." );
 		}
 
-		if ( renderMustache( "{{name}}", { name: "alias" } ) != "alias" ) {
+		if ( compare( renderMustache( "{{name}}", { name: "alias" } ), "alias" ) != 0 ) {
 			throw( message = "renderMustache() alias was not registered." );
 		}
 
 		var renderer = mustache( cacheMaxEntries = 1 );
+		if ( structKeyExists( renderer, "getCache" ) || structKeyExists( renderer, "setParser" ) ) {
+			throw( message = "Renderer properties exposed internal collaborators." );
+		}
+		if ( renderer.render( "{{engine.cache}}|{{engine.parser}}", { engine: renderer } ) != "|" ) {
+			throw( message = "Renderer properties leaked through template lookup." );
+		}
+		if ( compare( renderer.render( "{{item.displayName}}|{{item.variablesScope.privateToken}}", { item: this } ), "installed module|" ) != 0 ) {
+			throw( message = "Native property lookup failed or exposed private state." );
+		}
+		var template = "{{$body}}#char( 10 )#{{name}}#char( 10 )#{{/body}}#char( 10 )#Tail";
+		if ( compare( mustacheRender( template, { name: "Ada" } ), "Ada#char( 10 )#Tail" ) != 0 ) {
+			throw( message = "Standalone inheritance lost following content." );
+		}
+		var ast = mustacheParse( mustacheTokenize( "{{name}}" ), "{{name}}" );
+		if ( arrayLen( ast ) != 1 || compare( ast[ 1 ].name, "name" ) != 0 ) {
+			throw( message = "Tokenizer/parser BIFs did not round-trip." );
+		}
+		if ( structKeyExists( new MustacheParser(), "buildNameParts" ) ) {
+			throw( message = "Parser exposed an internal name-splitting helper." );
+		}
+		var sectionSource = "{{##wrap}}Hello {{name}}{{/wrap}}";
+		var sectionAst = mustacheParse( mustacheTokenize( sectionSource ), sectionSource );
+		if ( compare( sectionAst[ 1 ].rawText, "Hello {{name}}" ) != 0 ) {
+			throw( message = "Public parsing did not preserve raw section text." );
+		}
+		var lambdaView = { name: "Ada", wrap: ( text, render ) => render( text ) };
+		if ( compare( renderer.render( sectionSource, lambdaView ), "Hello Ada" ) != 0 ) {
+			throw( message = "Compiled section source did not reach the lambda." );
+		}
 		var buffer = new java.lang.StringBuilder( "abc" );
 		if ( renderer.render( "{{buffer.reverse}}", { buffer: buffer } ) != "" || buffer.toString() != "abc" ) {
 			throw( message = "Template lookup invoked an arbitrary Java method." );

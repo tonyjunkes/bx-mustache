@@ -1,0 +1,7 @@
+import tests.resources.GeneratedAccessorFixture;
+
+class extends="GeneratedAccessorFixture" {
+	public boolean function isActive() {
+		return true;
+	}
+}

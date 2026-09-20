@@ -1,0 +1,62 @@
+import bxModules.bxMustache.models.Mustache;
+
+/**
+ * Runs the pinned, unmodified upstream JSON corpus with exact string assertions.
+ */
+class extends="testbox.system.BaseSpec" {
+	function runCategory( required string category ) {
+		var categoryName = arguments.category;
+		var manifest = jsonDeserialize( fileRead( expandPath( "/tests/resources/mustache-spec-manifest.json" ) ) );
+		var fileName = arrayFind( manifest.upstream.optionalModules, categoryName ) ? "~" & categoryName : categoryName;
+		var corpus = jsonDeserialize( fileRead( expandPath( "/tests/resources/mustache-spec/#fileName#.json" ) ) );
+
+		describe( "Mustache #categoryName# spec (#manifest.upstream.tag#)", () => {
+			it( "contains all pinned upstream examples", () => {
+				expect( corpus.tests ).toHaveLength( manifest.categories[ categoryName ] );
+			} );
+
+			for ( var example in corpus.tests ) {
+				it(
+					title = example.name & ": " & example.desc,
+					data = { example: example, category: categoryName },
+					body = function( data ) {
+						var example = duplicate( data.example );
+						if ( data.category == "lambdas" ) {
+							example.data.lambda = lambdaFor( example.name );
+						}
+						expect( new Mustache().render( example.template, example.data, example.partials ?: {} ) )
+							.toBeWithCase( example.expected );
+					}
+				);
+			}
+		} );
+	}
+
+	private function lambdaFor( required string name ) {
+		switch ( arguments.name ) {
+			case "Interpolation":
+				return () => "world";
+			case "Interpolation - Expansion":
+				return () => "{{planet}}";
+			case "Interpolation - Alternate Delimiters":
+				return () => "|planet| => {{planet}}";
+			case "Interpolation - Multiple Calls":
+				var calls = 0;
+				return function() { calls++; return calls; };
+			case "Escaping":
+				return () => ">";
+			case "Section":
+				return ( text ) => compare( text, "{{x}}" ) == 0 ? "yes" : "no";
+			case "Section - Expansion":
+				return ( text ) => text & "{{planet}}" & text;
+			case "Section - Alternate Delimiters":
+				return ( text ) => text & "{{planet}} => |planet|" & text;
+			case "Section - Multiple Calls":
+				return ( text ) => "__" & text & "__";
+			case "Inverted Section":
+				return ( text ) => false;
+			default:
+				throw( message = "Missing BoxLang adapter for upstream lambda: #arguments.name#" );
+		}
+	}
+}

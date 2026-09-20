@@ -9,24 +9,24 @@ class extends="testbox.system.BaseSpec" {
 
 			it( "escapes variables but preserves unescaped forms", () => {
 				expect( variables.renderer.render( "{{value}}", { value: "<em>&</em>" } ) )
-					.toBe( "&lt;em&gt;&amp;&lt;" & "&" & char( 35 ) & "x2f;em&gt;" );
+					.toBeWithCase( "&lt;em&gt;&amp;&lt;" & "&" & char( 35 ) & "x2f;em&gt;" );
 				expect( variables.renderer.render( "{{{value}}}|{{&value}}", { value: "<em>" } ) )
-					.toBe( "<em>|<em>" );
+					.toBeWithCase( "<em>|<em>" );
 			} );
 
 			it( "resolves dotted names and the implicit iterator", () => {
 				expect( variables.renderer.render(
 					"{{person.name}}:{{##items}}[{{.}}]{{/items}}",
 					{ person: { name: "Ada" }, items: [ "one", "two" ] }
-				) ).toBe( "Ada:[one][two]" );
+				) ).toBeWithCase( "Ada:[one][two]" );
 			} );
 
 			it( "renders sections and inverted sections according to Mustache truthiness", () => {
 				expect( variables.renderer.render(
 					"{{##items}}{{name}},{{/items}}{{^items}}none{{/items}}",
 					{ items: [ { name: "Ada" }, { name: "Grace" } ] }
-				) ).toBe( "Ada,Grace," );
-				expect( variables.renderer.render( "{{^items}}none{{/items}}", { items: [] } ) ).toBe( "none" );
+				) ).toBeWithCase( "Ada,Grace," );
+				expect( variables.renderer.render( "{{^items}}none{{/items}}", { items: [] } ) ).toBeWithCase( "none" );
 			} );
 
 			it( "applies standalone partial indentation and dynamic partial names", () => {
@@ -34,18 +34,18 @@ class extends="testbox.system.BaseSpec" {
 					"Names:" & char( 10 ) & "  {{>card}}" & char( 10 ) & "Done",
 					{ name: "Ada" },
 					{ card: "<{{name}}>" & char( 10 ) & "<again>" & char( 10 ) }
-				) ).toBe( "Names:" & char( 10 ) & "  <Ada>" & char( 10 ) & "  <again>" & char( 10 ) & "Done" );
+				) ).toBeWithCase( "Names:" & char( 10 ) & "  <Ada>" & char( 10 ) & "  <again>" & char( 10 ) & "Done" );
 				expect( variables.renderer.render(
 					"{{>*active}}",
 					{ active: "card", name: "Grace" },
 					{ card: "<{{name}}>" }
-				) ).toBe( "<Grace>" );
+				) ).toBeWithCase( "<Grace>" );
 			} );
 
 			it( "supports comments, standalone whitespace, and alternate delimiters", () => {
 				expect( variables.renderer.render( "A" & char( 10 ) & "  {{! ignored}}" & char( 10 ) & "B" ) )
-					.toBe( "A" & char( 10 ) & "B" );
-				expect( variables.renderer.render( "{{=<% %>=}}<%value%>", { value: "ok" } ) ).toBe( "ok" );
+					.toBeWithCase( "A" & char( 10 ) & "B" );
+				expect( variables.renderer.render( "{{=<% %>=}}<%value%>", { value: "ok" } ) ).toBeWithCase( "ok" );
 			} );
 
 			it( "invokes variable and section lambdas", () => {
@@ -61,8 +61,8 @@ class extends="testbox.system.BaseSpec" {
 					}
 				);
 
-				expect( variableOutput ).toBe( "Hello Lambda!" );
-				expect( sectionOutput ).toBe( "<b>Hello Ada</b>" );
+				expect( variableOutput ).toBeWithCase( "Hello Lambda!" );
+				expect( sectionOutput ).toBeWithCase( "<b>Hello Ada</b>" );
 			} );
 
 			it( "renders parent templates with block overrides in the current context", () => {
@@ -70,7 +70,7 @@ class extends="testbox.system.BaseSpec" {
 					"{{<layout}}{{$body}}Hello {{name}}{{/body}}{{/layout}}",
 					{ name: "Ada" },
 					{ layout: "<main>{{$body}}Default{{/body}}</main>" }
-				) ).toBe( "<main>Hello Ada</main>" );
+				) ).toBeWithCase( "<main>Hello Ada</main>" );
 			} );
 		} );
 	}

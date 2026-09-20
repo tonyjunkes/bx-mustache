@@ -10,7 +10,54 @@ class extends="testbox.system.BaseSpec" {
 				variables.cache = new MustacheTemplateCache();
 			} );
 
+			it( "exposes configuration only through the synchronized API", function(){
+				for ( var name in [ "entries", "cacheMaxEntries", "cacheEnabled", "cacheGeneration", "cacheLockName" ] ) {
+					expect( structKeyExists( variables.cache, name ) ).toBeFalse();
+					expect( structKeyExists( variables.cache, "get" & name ) ).toBeFalse();
+					expect( structKeyExists( variables.cache, "set" & name ) ).toBeFalse();
+				}
+				variables.cache.configure( enabled = true, maxEntries = 2 );
+				var stats = variables.cache.getStats();
+				stats.maxEntries = 99;
+				expect( variables.cache.getStats().maxEntries ).toBe( 2 );
+			} );
+
 			describe( "getStats()", function(){
+				it( "keeps colliding hashes and ambiguous delimiter concatenations distinct", function(){
+					var keys = [
+						[ "Aa", "{{", "}}" ], [ "BB", "{{", "}}" ],
+						[ "same", "a", "bc" ], [ "same", "ab", "c" ],
+						[ "same", "Aa", "z" ], [ "same", "BB", "z" ]
+					];
+					var calls = 0;
+					var parseFn = function( t, o, c ){ calls++; return [ t, o, c ]; };
+					for ( var pass = 1; pass <= 2; pass++ ) {
+						for ( var key in keys ) {
+							var ast = variables.cache.getOrSet( key[ 1 ], key[ 2 ], key[ 3 ], parseFn );
+							expect( jsonSerialize( ast ) ).toBeWithCase( jsonSerialize( key ) );
+						}
+					}
+					expect( calls ).toBe( 6 );
+				} );
+
+				it( "does not publish a parse result across disable and re-enable", function(){
+					var cache = variables.cache;
+					var calls = 0;
+					var parseFn = function( t, o, c ) {
+						calls++;
+						if ( calls == 1 ) {
+							cache.configure( enabled = false );
+							cache.configure( enabled = true );
+						}
+						return [ t ];
+					};
+					expect( cache.getOrSet( "value", "{{", "}}", parseFn )[ 1 ] ).toBeWithCase( "value" );
+					expect( cache.getStats().currentEntries ).toBe( 0 );
+					cache.getOrSet( "value", "{{", "}}", parseFn );
+					cache.getOrSet( "value", "{{", "}}", parseFn );
+					expect( calls ).toBe( 2 );
+				} );
+
 				it( "reports defaults on fresh instance", function(){
 					var stats = variables.cache.getStats();
 

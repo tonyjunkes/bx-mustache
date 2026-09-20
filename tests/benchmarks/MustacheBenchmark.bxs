@@ -1,58 +1,111 @@
 /**
- * Non-gating performance probe. Run with the latest stable BoxLang runtime:
- *   boxlang tests/benchmarks/MustacheBenchmark.bxs
+ * Non-gating performance probe for BoxLang 1.17.5+:
+ *   boxlang --bx-home tests/.boxlang --bx-config tests/boxlang.json tests/benchmarks/MustacheBenchmark.bxs
  *
- * Results are median warm runs in milliseconds; this script intentionally has
- * no timing assertions so CI remains deterministic.
+ * Medians of five warm samples, in milliseconds per operation. Small operations
+ * are batched using a monotonic clock. No timing thresholds belong in CI.
  */
 import bxModules.bxMustache.models.Mustache;
+import bxModules.bxMustache.models.Parser as MustacheParser;
+import bxModules.bxMustache.models.TemplateCache;
+import java.lang.System as JavaSystem;
 
-function median( required array samples ) {
-	arraySort( arguments.samples, "numeric" );
-	var middle = ( arrayLen( arguments.samples ) + 1 ) / 2;
-	if ( middle == int( middle ) ) {
-		return ( arguments.samples[ middle ] + arguments.samples[ middle + 1 ] ) / 2;
-	}
-	return arguments.samples[ int( middle ) ];
-}
-
-function measure( required function operation, numeric runs = 5 ) {
+function measure( required function operation, numeric iterations = 1, numeric runs = 5 ) {
 	var samples = [];
-	// Warm the JIT and module classloader before recording timings.
-	arguments.operation();
-	for ( var i = 1; i <= arguments.runs; i++ ) {
-		var started = getTickCount();
-		arguments.operation();
-		arrayAppend( samples, getTickCount() - started );
+	for ( var warm = 1; warm <= 2; warm++ ) {
+		for ( var i = 1; i <= arguments.iterations; i++ ) { arguments.operation(); }
 	}
-	return median( samples );
+	for ( var sample = 1; sample <= arguments.runs; sample++ ) {
+		var started = JavaSystem::nanoTime();
+		for ( var i = 1; i <= arguments.iterations; i++ ) { arguments.operation(); }
+		arrayAppend( samples, ( JavaSystem::nanoTime() - started ) / 1000000 / arguments.iterations );
+	}
+	return arrayMedian( samples );
 }
 
 function main() {
 	var renderer = new Mustache();
-	var largeTemplate = repeatString( "  {{! comment }}#char( 10 )#", 8000 );
+	var parser = new MustacheParser();
+	for ( var ending in [ char( 10 ), char( 13 ) & char( 10 ) ] ) {
+		var largeTemplate = repeatString( "  {{! comment }}" & ending, 8000 );
+		var kind = len( ending ) == 1 ? "lf" : "crlf";
+		println( "tokenize-8000-" & kind & "-lines-ms=" & measure( () => renderer.tokenize( largeTemplate ) ) );
+	}
+	var longText = repeatString( "x", 100000 ) & "{{name}}";
+	println( "tokenize-100kb-one-tag-ms=" & measure( () => renderer.tokenize( longText ), 20 ) );
+	var variableTemplate = repeatString( "{{user.name}} ", 1000 );
+	var variableTokens = renderer.tokenize( variableTemplate );
+	println( "parse-pretokenized-1000-variables-ms=" & measure( () => renderer.parse( variableTokens, variableTemplate ), 10 ) );
+	println( "render-cached-1000-variables-ms=" & measure( () => renderer.render( variableTemplate, { user: { name: "Ada" } } ), 5 ) );
+	var rowView = { rows: [] };
+	for ( var i = 1; i <= 1000; i++ ) { arrayAppend( rowView.rows, { name: "Ada", value: i } ); }
+	var rowTemplate = "{{##rows}}{{name}}:{{value}};{{/rows}}";
+	println( "render-cached-1000-section-rows-ms=" & measure( () => renderer.render( rowTemplate, rowView ), 5 ) );
+
 	var nestedTemplate = "{{##outer}}{{##inner}}{{name}}:{{.}};{{/inner}}{{/outer}}";
 	var nestedView = { outer: [ { inner: [ 1, 2, 3 ], name: "A" } ] };
-
-	println( "tokenize-8000-lines-ms=" & measure( function(){ renderer.tokenize( largeTemplate ); } ) );
-	println( "parse-nested-ms=" & measure( function(){ renderer.parse( renderer.tokenize( nestedTemplate ), nestedTemplate ); } ) );
-	println( "render-cached-ms=" & measure( function(){ renderer.render( nestedTemplate, nestedView ); } ) );
+	println( "render-cached-small-ms=" & measure( () => renderer.render( nestedTemplate, nestedView ), 100 ) );
 	renderer.configureCache( enabled = false );
-	println( "render-uncached-ms=" & measure( function(){ renderer.render( nestedTemplate, nestedView ); } ) );
+	println( "render-uncached-small-ms=" & measure( () => renderer.render( nestedTemplate, nestedView ), 100 ) );
+	renderer.configureCache( enabled = true, maxEntries = 32 );
+
+	var partialView = { items: [] };
+	for ( var i = 1; i <= 50; i++ ) { arrayAppend( partialView.items, { name: "Ada" } ); }
+	var partialSource = "{{##items}}" & char( 10 ) & "  {{>p}}" & char( 10 ) & "{{/items}}";
+	var partials = { p: repeatString( "hello {{name}}" & char( 10 ), 100 ) };
+	println( "render-cached-indented-partial-50x100-ms=" & measure( () => renderer.render( partialSource, partialView, partials ) ) );
+	println( "render-indented-partial-output-chars=" & len( renderer.render( partialSource, partialView, partials ) ) );
+
+	var cache = new TemplateCache();
+	var cacheSource = repeatString( "x", 1000000 );
+	var parseFn = ( t, o, c ) => [];
+	println( "cache-hit-1mb-ms=" & measure( () => cache.getOrSet( cacheSource, "{{", "}}", parseFn ), 100 ) );
+	var churnSources = [];
+	for ( var i = 1; i <= 64; i++ ) { arrayAppend( churnSources, "template-" & i ); }
+	cache.configure( maxEntries = 32 );
+	println( "cache-churn-64-templates-ms=" & measure( function(){
+		for ( var source in churnSources ) { cache.getOrSet( source, "{{", "}}", parseFn ); }
+	}, 10 ) );
+
+	var deepSource = repeatString( "{{##a}}", 128 ) & repeatString( "x", 100000 ) & repeatString( "{{/a}}", 128 );
+	var deepTokens = renderer.tokenize( deepSource );
+	println( "compile-pretokenized-depth-128-ms=" & measure( () => parser.compile( deepTokens, deepSource ), 10 ) );
+	var node = parser.compile( deepTokens, deepSource )[ 1 ];
+	var retainedRawCharacters = 0;
+	for ( var depth = 1; depth <= 128; depth++ ) {
+		retainedRawCharacters += len( node.rawText ?: "" );
+		node = node.children[ 1 ];
+	}
+	println( "compiled-depth-128-source-chars=" & len( deepSource ) & "; copied-raw-body-chars=" & retainedRawCharacters );
 
 	var threadNames = [];
-	renderer.configureCache( enabled = true, maxEntries = 32 );
+	var concurrentStarted = JavaSystem::nanoTime();
 	for ( var i = 1; i <= 8; i++ ) {
-		var threadName = "mustacheBenchmark_" & i & "_" & getTickCount();
+		var threadName = "mustacheBenchmark_" & i & "_" & createUUID();
 		arrayAppend( threadNames, threadName );
 		thread action="run" name=threadName renderer=renderer template=nestedTemplate view=nestedView {
-			for ( var j = 1; j <= 100; j++ ) {
-				attributes.renderer.render( attributes.template, attributes.view );
+			thread.completed = false;
+			thread.failure = "";
+			try {
+				for ( var j = 1; j <= 100; j++ ) {
+					if ( compare( attributes.renderer.render( attributes.template, attributes.view ), "A:1;A:2;A:3;" ) != 0 ) {
+						throw( message = "Concurrent render output mismatch" );
+					}
+				}
+				thread.completed = true;
+			} catch ( any e ) {
+				thread.failure = e.message;
 			}
 		};
 	}
 	thread action="join" name=arrayToList( threadNames ) timeout=30000;
-	println( "concurrent-cache-access=8x100 complete" );
+	var elapsed = ( JavaSystem::nanoTime() - concurrentStarted ) / 1000000;
+	for ( var threadName in threadNames ) {
+		if ( !bxThread[ threadName ].completed ) {
+			throw( message = "Benchmark thread incomplete: " & threadName & " " & bxThread[ threadName ].failure );
+		}
+	}
+	println( "concurrent-cache-access-8x100-ms=" & elapsed );
 }
 
 main();

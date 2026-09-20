@@ -1,0 +1,29 @@
+class accessors=true {
+	property name="name" default="Ada";
+	property name="hidden" getter=false default="private property";
+	variables.token = "private token";
+	this.label = "public field";
+	this.calls = 0;
+
+	public string function getRole() {
+		return "Engineer";
+	}
+
+	private string function getSecret() {
+		return variables.token;
+	}
+
+	public string function getRequired( required string value ) {
+		this.calls++;
+		return arguments.value;
+	}
+
+	public string function getBroken() {
+		throw( type = "Mustache.MockError", message = "Getter failed" );
+	}
+
+	public void function onMissingMethod( missingMethodName, missingMethodArguments ) {
+		this.calls++;
+		throw( message = "Missing methods must not be invoked by lookup." );
+	}
+}

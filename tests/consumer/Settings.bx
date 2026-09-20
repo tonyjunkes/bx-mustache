@@ -1,0 +1,41 @@
+import java.lang.System;
+
+/**
+ * Run in a fresh runtime for each configuration. Reflection is confined to this
+ * test so cache settings and alias identity can be checked without a public debug API.
+ */
+class {
+	function main() {
+		var expectedEnabled = getSystemSetting( "MUSTACHE_EXPECT_CACHE_ENABLED", "true" );
+		var expectedMaxEntries = val( getSystemSetting( "MUSTACHE_EXPECT_CACHE_MAX_ENTRIES", "200" ) );
+		var renderer = rendererFor( "mustacheRender" );
+		var aliasRenderer = rendererFor( "renderMustache" );
+		if ( System::identityHashCode( renderer ) != System::identityHashCode( aliasRenderer ) ) {
+			throw( message = "Render BIF aliases do not share a renderer." );
+		}
+
+		mustacheRender( "first" );
+		renderMustache( "second" );
+		mustacheRender( "third" );
+		var stats = renderer.getCacheStats();
+		if ( stats.enabled != expectedEnabled || stats.maxEntries != expectedMaxEntries ) {
+			throw( message = "Module cache settings were not applied: #jsonSerialize( stats )#" );
+		}
+		var expectedEntries = expectedEnabled ? min( 3, expectedMaxEntries ) : 0;
+		if ( stats.currentEntries != expectedEntries ) {
+			throw( message = "Shared cache did not honor its enabled state or capacity." );
+		}
+
+		var isolated = mustache();
+		if ( !isolated.getCacheStats().enabled || isolated.getCacheStats().maxEntries != 200 ) {
+			throw( message = "Module settings leaked into an isolated renderer." );
+		}
+		writeOutput( "bx-mustache module settings passed" );
+	}
+
+	private any function rendererFor( required string bifName ) {
+		var target = getBoxRuntime().getFunctionService().getGlobalFunction( arguments.bifName ).getBIF().getTarget();
+		var scope = target.$bx.$class.getMethod( "getVariablesScope" ).invoke( target, [] );
+		return scope.renderer;
+	}
+}

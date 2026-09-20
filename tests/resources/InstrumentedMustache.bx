@@ -2,15 +2,14 @@ import bxModules.bxMustache.models.Mustache;
 import tests.resources.InstrumentedParser;
 
 class extends="Mustache" {
-	variables._instrumentedParser = new InstrumentedParser();
-	variables._parser = variables._instrumentedParser;
+	variables.instrumentedParser = new InstrumentedParser();
 
 	public function init() {
-		super.init( parser = variables._instrumentedParser );
+		super.init( parser = variables.instrumentedParser );
 		return this;
 	}
 
 	public numeric function getParseCallCount() {
-		return variables._instrumentedParser.getParseCallCount();
+		return variables.instrumentedParser.getParseCallCount();
 	}
 }

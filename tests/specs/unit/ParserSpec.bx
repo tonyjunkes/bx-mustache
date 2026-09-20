@@ -266,32 +266,48 @@ class extends="testbox.system.BaseSpec" {
 				} );
 			} );
 
-			describe( "buildNameParts()", function(){
-				it( "returns single dot for dot name", function(){
-					var parts = variables.parser.buildNameParts( "." );
-					expect( parts ).toHaveLength( 1 );
-					expect( parts[ 1 ] ).toBe( "." );
+			describe( "compile()", function(){
+				it( "retains source spans instead of overlapping raw bodies while preserving public parse output", function(){
+					var renderer = new bxModules.bxMustache.models.Mustache();
+					var source = repeatString( "{{##a}}", 16 ) & repeatString( "x", 1000 ) & repeatString( "{{/a}}", 16 );
+					var tokens = renderer.tokenize( source );
+					var compact = variables.parser.compile( tokens, source );
+					var publicAst = variables.parser.parse( tokens, source );
+					var compactNode = compact[ 1 ];
+					var publicNode = publicAst[ 1 ];
+					for ( var i = 1; i <= 16; i++ ) {
+						expect( structKeyExists( compactNode, "rawText" ) ).toBeFalse();
+						expect( compactNode.source ).toBeWithCase( source );
+						expect( mid( compactNode.source, compactNode.rawStartPos, compactNode.rawLength ) ).toBeWithCase( publicNode.rawText );
+						expect( structKeyExists( publicNode, "source" ) ).toBeFalse();
+						compactNode = compactNode.children[ 1 ];
+						publicNode = publicNode.children[ 1 ];
+					}
 				} );
 
-				it( "returns single element for simple name", function(){
-					var parts = variables.parser.buildNameParts( "name" );
-					expect( parts ).toHaveLength( 1 );
-					expect( parts[ 1 ] ).toBe( "name" );
+				it( "discards temporary inheritance bodies after calculating whitespace metadata", function(){
+					var renderer = new bxModules.bxMustache.models.Mustache();
+					var source = "{{<layout}}{{$body}}" & char( 10 ) & "  {{name}}" & char( 10 ) & "{{/body}}{{/layout}}";
+					var ast = variables.parser.compile( renderer.tokenize( source ), source );
+					expect( structKeyExists( ast[ 1 ], "rawText" ) ).toBeFalse();
+					expect( structKeyExists( ast[ 1 ].children[ 1 ], "rawText" ) ).toBeFalse();
+					expect( ast[ 1 ].children[ 1 ].definitionIndent ).toBeWithCase( "  " );
+				} );
+			} );
+
+			describe( "name parts", function(){
+				it( "keeps name splitting internal to the parser", function(){
+					expect( structKeyExists( variables.parser, "buildNameParts" ) ).toBeFalse();
 				} );
 
-				it( "splits dotted names into parts", function(){
-					var parts = variables.parser.buildNameParts( "a.b.c" );
-					expect( parts ).toHaveLength( 3 );
-					expect( parts[ 1 ] ).toBe( "a" );
-					expect( parts[ 2 ] ).toBe( "b" );
-					expect( parts[ 3 ] ).toBe( "c" );
-				} );
-
-				it( "handles two-level dotted names", function(){
-					var parts = variables.parser.buildNameParts( "user.name" );
-					expect( parts ).toHaveLength( 2 );
-					expect( parts[ 1 ] ).toBe( "user" );
-					expect( parts[ 2 ] ).toBe( "name" );
+				it( "retains implicit iterator and dotted name parts in the public AST", function(){
+					var tokens = [
+						{ type: "variable", name: ".", startPos: 1, endPos: 5 },
+						{ type: "variable", name: "a.b.c", startPos: 6, endPos: 14 }
+					];
+					var ast = variables.parser.parse( tokens, "{{.}}{{a.b.c}}" );
+					expect( ast[ 1 ].nameParts ).toBe( [ "." ] );
+					expect( ast[ 2 ].nameParts ).toBe( [ "a", "b", "c" ] );
 				} );
 			} );
 		} );

@@ -11,13 +11,41 @@ class extends="testbox.system.BaseSpec" {
 				variables.mustache = new MustacheRenderer();
 			} );
 
+			it( "keeps collaborators and render internals private without generated accessors", function(){
+				var renderer = variables.mustache;
+				for ( var name in [ "tokenizer", "parser", "cache", "compileTemplates", "contextResolver" ] ) {
+					expect( structKeyExists( renderer, name ) ).toBeFalse();
+					expect( structKeyExists( renderer, "get" & name ) ).toBeFalse();
+					expect( structKeyExists( renderer, "set" & name ) ).toBeFalse();
+				}
+				expect( renderer.render(
+					"{{engine.tokenizer}}|{{engine.parser}}|{{engine.cache}}|{{engine.compileTemplates}}|{{engine.renderNodes}}",
+					{ engine: renderer }
+				) ).toBeWithCase( "||||" );
+			} );
+
+			it( "keeps nested, reentrant, and consecutive render output independent", function(){
+				var renderer = variables.mustache;
+				var source = "before{{##rows}}[{{name}}:{{##values}}{{.}}{{/values}}{{^values}}empty{{/values}}]{{/rows}}/{{lambda}}after";
+				var first = renderer.render( source, {
+					rows: [ { name: "A", values: [ "x", "y" ] }, { name: "B", values: [] } ],
+					lambda: () => renderer.render( "nested" )
+				} );
+				var second = renderer.render( source, {
+					rows: [ { name: "C", values: [ "z" ] } ],
+					lambda: () => "other"
+				} );
+				expect( first ).toBeWithCase( "before[A:xy][B:empty]/nestedafter" );
+				expect( second ).toBeWithCase( "before[C:z]/otherafter" );
+			} );
+
 			it( "escapes variables and preserves unescaped output", function(){
 				var output = variables.mustache.render(
 					"{{html}}|{{{html}}}|{{& html}}",
 					{ html: "<b>x</b>" }
 				);
 
-				expect( output ).toBe( "&lt;b&gt;x&lt;&##x2f;b&gt;|<b>x</b>|<b>x</b>" );
+				expect( output ).toBeWithCase( "&lt;b&gt;x&lt;&##x2f;b&gt;|<b>x</b>|<b>x</b>" );
 			} );
 
 			it( "escapes ampersands, angle brackets, quotes, and apostrophes", function(){
@@ -27,7 +55,7 @@ class extends="testbox.system.BaseSpec" {
 					{ html: raw }
 				);
 
-				expect( output ).toBe( "&amp;&lt;&gt;&quot;&##x27;" );
+				expect( output ).toBeWithCase( "&amp;&lt;&gt;&quot;&##x27;" );
 			} );
 
 			it( "renders dotted paths and numeric array indexes", function(){
@@ -42,24 +70,24 @@ class extends="testbox.system.BaseSpec" {
 					}
 				);
 
-				expect( output ).toBe( "Ada|Linus" );
+				expect( output ).toBeWithCase( "Ada|Linus" );
 			} );
 
 			it( "does not invoke arbitrary Java methods during lookup", function(){
 				var buffer = new java.lang.StringBuilder( "abc" );
-				expect( variables.mustache.render( "{{buffer.reverse}}", { buffer: buffer } ) ).toBe( "" );
-				expect( buffer.toString() ).toBe( "abc" );
+				expect( variables.mustache.render( "{{buffer.reverse}}", { buffer: buffer } ) ).toBeWithCase( "" );
+				expect( buffer.toString() ).toBeWithCase( "abc" );
 			} );
 
 			it( "treats null intermediate paths and null array items as missing", function(){
 				expect( variables.mustache.render(
 					"{{user.profile.name}}|{{##items}}[{{name}}:{{.}}]{{/items}}",
 					{ user: { profile: null }, items: [ null ], name: "parent" }
-				) ).toBe( "|[parent:]" );
+				) ).toBeWithCase( "|[parent:]" );
 			} );
 
 			it( "accepts tabs between changed delimiters", function(){
-				expect( variables.mustache.render( "{{=<%#char( 9 )#%>=}}<%name%>", { name: "Ada" } ) ).toBe( "Ada" );
+				expect( variables.mustache.render( "{{=<%#char( 9 )#%>=}}<%name%>", { name: "Ada" } ) ).toBeWithCase( "Ada" );
 			} );
 
 			it( "dedents inherited blocks with tabs without stripping text beginning with t", function(){
@@ -68,7 +96,7 @@ class extends="testbox.system.BaseSpec" {
 						expect( variables.mustache.render(
 							"{{<layout}}{{$body}}#newline##indentation#text#newline#{{/body}}{{/layout}}",
 							{}, { layout: "{{$body}}default{{/body}}" }
-						) ).toBe( "text#newline#" );
+						) ).toBeWithCase( "text#newline#" );
 					}
 				}
 			} );
@@ -81,7 +109,7 @@ class extends="testbox.system.BaseSpec" {
 					{ person: person }
 				);
 
-				expect( output ).toBe( "Ada|Architect|" );
+				expect( output ).toBeWithCase( "Ada|Architect|" );
 			} );
 
 			it( "rethrows object accessor errors instead of treating them as missing values", function(){
@@ -111,7 +139,7 @@ class extends="testbox.system.BaseSpec" {
 					}
 				);
 
-				expect( output ).toBe( "Ada-Team;Linus-Team;" );
+				expect( output ).toBeWithCase( "Ada-Team;Linus-Team;" );
 			} );
 
 			it( "uses current context with dot lookups inside array sections", function(){
@@ -120,7 +148,7 @@ class extends="testbox.system.BaseSpec" {
 					{ items: [ "a", "b", "c" ] }
 				);
 
-				expect( output ).toBe( "(a)(b)(c)" );
+				expect( output ).toBeWithCase( "(a)(b)(c)" );
 			} );
 
 			it( "renders sections for struct contexts", function(){
@@ -129,7 +157,7 @@ class extends="testbox.system.BaseSpec" {
 					{ person: { name: "Ada", role: "Engineer" } }
 				);
 
-				expect( output ).toBe( "Ada:Engineer" );
+				expect( output ).toBeWithCase( "Ada:Engineer" );
 			} );
 
 			it( "honors falsey values and inverted sections", function(){
@@ -138,7 +166,7 @@ class extends="testbox.system.BaseSpec" {
 					{ count: 0, empty: "" }
 				);
 
-				expect( output ).toBe( "||NC|NE" );
+				expect( output ).toBeWithCase( "||NC|NE" );
 			} );
 
 			it( "handles empty arrays for sections and inverted sections", function(){
@@ -147,7 +175,7 @@ class extends="testbox.system.BaseSpec" {
 					{ items: [] }
 				);
 
-				expect( output ).toBe( "|Y" );
+				expect( output ).toBeWithCase( "|Y" );
 			} );
 
 			it( "ignores comments and missing partials during rendering", function(){
@@ -157,7 +185,7 @@ class extends="testbox.system.BaseSpec" {
 					{}
 				);
 
-				expect( output ).toBe( "AB" );
+				expect( output ).toBeWithCase( "AB" );
 			} );
 
 			it( "renders partials from string and closure values", function(){
@@ -177,8 +205,8 @@ class extends="testbox.system.BaseSpec" {
 					}
 				);
 
-				expect( fromString ).toBe( "User: Ada" );
-				expect( fromClosure ).toBe( "User: Linus" );
+				expect( fromString ).toBeWithCase( "User: Ada" );
+				expect( fromClosure ).toBeWithCase( "User: Linus" );
 			} );
 
 			it( "supports variable lambdas with arity 0 and 1", function(){
@@ -198,7 +226,7 @@ class extends="testbox.system.BaseSpec" {
 					}
 				);
 
-				expect( output ).toBe( "4|Hi mustache|mustache" );
+				expect( output ).toBeWithCase( "4|Hi mustache|mustache" );
 			} );
 
 			it( "supports section lambdas with arity 0, 1, and 2", function(){
@@ -218,7 +246,23 @@ class extends="testbox.system.BaseSpec" {
 					}
 				);
 
-				expect( output ).toBe( "Ada|<Hi Ada>|[Hi Ada]" );
+				expect( output ).toBeWithCase( "Ada|<Hi Ada>|[Hi Ada]" );
+			} );
+
+			it( "renders lambda results containing only the current alternate delimiter", function(){
+				expect( variables.mustache.render(
+					"{{= | | =}}<|##lambda|-|/lambda|>", {
+						planet: "Earth",
+						lambda: ( text ) => text & "|planet|" & text
+					}
+				) ).toBeWithCase( "<-Earth->" );
+			} );
+
+			it( "uses native falsey string coercion consistently for both section kinds", function(){
+				for ( var value in [ "false", "no", "0", "", false, 0, null, [] ] ) {
+					expect( variables.mustache.render( "{{##value}}yes{{/value}}{{^value}}no{{/value}}", { value: value } ) )
+						.toBeWithCase( "no" );
+				}
 			} );
 
 			it( "returns empty output for missing variables and sections", function(){
@@ -227,7 +271,7 @@ class extends="testbox.system.BaseSpec" {
 					{}
 				);
 
-				expect( output ).toBe( "ABC" );
+				expect( output ).toBeWithCase( "ABC" );
 			} );
 		} );
 	}

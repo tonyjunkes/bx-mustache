@@ -1,18 +1,23 @@
+import bxModules.bxMustache.models.StringUtil;
+
 /**
  * Builds the Mustache AST and applies inheritance whitespace rules.
  */
 class {
-	variables.CONTAINER_NODE_TYPES = {
-		section_start: "section",
-		inverted_start: "inverted",
-		block_start: "block",
-		parent_start: "parent"
-	};
-
 	public array function parse( required array tokens, required string template ) {
+		return parseTokens( arguments.tokens, arguments.template, false );
+	}
+
+	/** Internal render representation. Public parse() retains its rawText fields. */
+	public array function compile( required array tokens, required string template ) {
+		return parseTokens( arguments.tokens, arguments.template, true );
+	}
+
+	private array function parseTokens( required array tokens, required string template, required boolean compact ) {
 		var root = { type: "root", children: [] };
 		var stack = [ root ];
 		var localTokens = arguments.tokens;
+		var inheritanceNodes = [];
 
 		for ( var i = 1; i <= arrayLen( localTokens ); i++ ) {
 			var token = localTokens[ i ];
@@ -49,7 +54,7 @@ class {
 				case "block_start":
 				case "parent_start":
 					var node = {
-						type: _getContainerNodeType( token.type ),
+						type: getContainerNodeType( token.type ),
 						name: token.name,
 						children: [],
 						startPos: token.startPos,
@@ -61,8 +66,13 @@ class {
 
 					if ( token.type == "section_start" || token.type == "inverted_start" ) {
 						node.nameParts = buildNameParts( token.name );
-						node.renderOpenDelimiter = token.openDelimiter;
-						node.renderCloseDelimiter = token.closeDelimiter;
+					}
+					if ( token.type != "parent_start" ) {
+						node.renderOpenDelimiter = token.openDelimiter ?: "{{";
+						node.renderCloseDelimiter = token.closeDelimiter ?: "}}";
+					}
+					if ( token.type == "block_start" || token.type == "parent_start" ) {
+						arrayAppend( inheritanceNodes, node );
 					}
 
 					arrayAppend( current.children, node );
@@ -79,7 +89,7 @@ class {
 
 					var openIndex = arrayLen( stack );
 					var openName = stack[ openIndex ].name;
-					if ( openName != token.name ) {
+					if ( compare( openName, token.name ) != 0 ) {
 						throw(
 							type = "Mustache.ParserSectionException",
 							message = "Section mismatch. Opened '#openName#' but closed '#token.name#'."
@@ -88,10 +98,19 @@ class {
 
 					var rawEndPos = token.startPos - 1;
 					var rawStartPos = stack[ openIndex ].rawStartPos;
-					if ( rawEndPos >= rawStartPos ) {
+					var openNode = stack[ openIndex ];
+					if ( arguments.compact ) {
+						openNode.source = arguments.template;
+						openNode.rawLength = max( 0, rawEndPos - rawStartPos + 1 );
+					}
+					if ( rawEndPos >= rawStartPos && ( !arguments.compact || openNode.type == "block" || openNode.type == "parent" ) ) {
 						stack[ openIndex ].rawText = mid( arguments.template, rawStartPos, rawEndPos - rawStartPos + 1 );
 					}
+					if ( arguments.compact && openNode.type != "block" && openNode.type != "parent" ) {
+						structDelete( openNode, "rawText" );
+					}
 					stack[ openIndex ].endPos = token.endPos;
+					stack[ openIndex ].closingStandalone = token.standalone ?: false;
 
 					arrayDeleteAt( stack, openIndex );
 					break;
@@ -106,12 +125,19 @@ class {
 			throw( type = "Mustache.ParserSectionException", message = "Unclosed section: #unclosed.name#" );
 		}
 
-		_finalizeParsedNodes( root.children, arguments.template );
+		if ( arrayLen( inheritanceNodes ) ) {
+			finalizeParsedNodes( root.children, arguments.template );
+			if ( arguments.compact ) {
+				for ( var node in inheritanceNodes ) {
+					structDelete( node, "rawText" );
+				}
+			}
+		}
 
 		return root.children;
 	}
 
-	public array function buildNameParts( required string name ) {
+	private array function buildNameParts( required string name ) {
 		if ( arguments.name == "." ) {
 			return [ "." ];
 		}
@@ -123,34 +149,34 @@ class {
 		return listToArray( arguments.name, "." );
 	}
 
-	private string function _getContainerNodeType( required string tokenType ) {
-		if ( structKeyExists( variables.CONTAINER_NODE_TYPES, arguments.tokenType ) ) {
-			return variables.CONTAINER_NODE_TYPES[ arguments.tokenType ];
+	private string function getContainerNodeType( required string tokenType ) {
+		switch ( arguments.tokenType ) {
+			case "section_start": return "section";
+			case "inverted_start": return "inverted";
+			case "block_start": return "block";
+			case "parent_start": return "parent";
 		}
 
 		throw( type = "Mustache.ParserTokenException", message = "Unsupported container token type: #arguments.tokenType#" );
 	}
 
-	private void function _finalizeParsedNodes( required array nodes, required string template ) {
+	private void function finalizeParsedNodes( required array nodes, required string template ) {
 		for ( var i = 1; i <= arrayLen( arguments.nodes ); i++ ) {
 			var node = arguments.nodes[ i ];
 
 			if ( structKeyExists( node, "children" ) && isArray( node.children ) && arrayLen( node.children ) ) {
-				_finalizeParsedNodes( node.children, arguments.template );
+				finalizeParsedNodes( node.children, arguments.template );
 			}
 
 			if ( !listFindNoCase( "block,parent", node.type ) ) {
 				continue;
 			}
 
-			var nodeContext = _getInheritanceNodeContext( arguments.template, node );
+			var nodeContext = getInheritanceNodeContext( arguments.template, node );
 			node.expansionIndent = nodeContext.expansionIndent;
 			node.stripLeadingLineBreak = node.type == "block" ? nodeContext.stripLeadingLineBreak : false;
 			node.trailingLineBreak = node.type == "block" ? nodeContext.trailingLineBreak : "";
-			var normalizedBlockSource = StringUtil::normalizeBlockSourceText( node.rawText, nodeContext.stripLeadingLineBreak );
-			node.definitionIndent = node.type == "block" && StringUtil::containsLineBreak( normalizedBlockSource )
-				? _getCommonLeadingIndentation( normalizedBlockSource )
-				: "";
+			node.definitionIndent = nodeContext.definitionIndent;
 
 			if ( nodeContext.trimLeadingLength > 0 && i > 1 && arguments.nodes[ i - 1 ].type == "text" ) {
 				var previousValue = arguments.nodes[ i - 1 ].value;
@@ -168,7 +194,7 @@ class {
 		}
 	}
 
-	private struct function _getInheritanceNodeContext( required string template, required struct node ) {
+	private struct function getInheritanceNodeContext( required string template, required struct node ) {
 		var lineStartPos = StringUtil::getLineStartPos( arguments.template, arguments.node.startPos );
 		var leadingWhitespace = mid( arguments.template, lineStartPos, arguments.node.startPos - lineStartPos );
 		var hasStandaloneLeading = StringUtil::containsOnlyStandaloneWhitespace( leadingWhitespace );
@@ -214,20 +240,31 @@ class {
 		var stripLeadingLineBreak = nextOpenLineBreakPos > 0 && StringUtil::containsOnlyStandaloneWhitespace( openRemainder );
 		var isStandaloneNode = hasStandaloneLeading && hasStandaloneTrailing && !hasInlineContent;
 		var expansionIndent = isStandaloneNode ? leadingWhitespace : "";
+		var definitionIndent = "";
+		if ( arguments.node.type == "block" ) {
+			var normalizedSource = StringUtil::normalizeBlockSourceText( arguments.node.rawText, stripLeadingLineBreak );
+			if ( StringUtil::containsLineBreak( normalizedSource ) ) {
+				definitionIndent = getCommonLeadingIndentation( normalizedSource );
+			}
+		}
 		if ( arguments.node.type == "block" && !len( expansionIndent ) && stripLeadingLineBreak ) {
-			expansionIndent = _getCommonLeadingIndentation( StringUtil::normalizeBlockSourceText( arguments.node.rawText, true ) );
+			// A single remaining line also supplies expansion indentation.
+			expansionIndent = StringUtil::containsLineBreak( normalizedSource )
+				? definitionIndent : getCommonLeadingIndentation( normalizedSource );
 		}
 
 		return {
 			trimLeadingLength: isStandaloneNode ? len( leadingWhitespace ) : 0,
-			trimTrailingLength: isStandaloneNode ? trailingLength : 0,
+			// A standalone closing tag's trailing whitespace was already consumed by the tokenizer.
+			trimTrailingLength: isStandaloneNode && !arguments.node.closingStandalone ? trailingLength : 0,
 			expansionIndent: expansionIndent,
+			definitionIndent: definitionIndent,
 			stripLeadingLineBreak: stripLeadingLineBreak,
 			trailingLineBreak: isStandaloneNode ? trailingLineBreak : ""
 		};
 	}
 
-	private string function _getCommonLeadingIndentation( required string templateText ) {
+	private string function getCommonLeadingIndentation( required string templateText ) {
 		var normalizedText = reReplace( arguments.templateText, char( 13 ) & char( 10 ) & "?", char( 10 ), "all" );
 		var lines = listToArray( normalizedText, char( 10 ), true );
 		var commonIndent = "";
@@ -248,7 +285,7 @@ class {
 				continue;
 			}
 
-			commonIndent = _getCommonWhitespacePrefix( commonIndent, lineIndent );
+			commonIndent = getCommonWhitespacePrefix( commonIndent, lineIndent );
 			if ( !len( commonIndent ) ) {
 				break;
 			}
@@ -257,7 +294,7 @@ class {
 		return hasContent ? commonIndent : "";
 	}
 
-	private string function _getCommonWhitespacePrefix( required string firstIndent, required string secondIndent ) {
+	private string function getCommonWhitespacePrefix( required string firstIndent, required string secondIndent ) {
 		var maxLength = min( len( arguments.firstIndent ), len( arguments.secondIndent ) );
 
 		for ( var i = 1; i <= maxLength; i++ ) {

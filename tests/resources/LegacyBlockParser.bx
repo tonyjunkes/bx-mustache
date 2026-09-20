@@ -1,0 +1,22 @@
+import bxModules.bxMustache.models.Parser as MustacheParser;
+
+/** Simulates an injected parser using the pre-1.0 block AST contract. */
+class extends="MustacheParser" {
+	public array function parse( required array tokens, required string template ) {
+		var nodes = super.parse( argumentCollection = arguments );
+		removeBlockDelimiters( nodes );
+		return nodes;
+	}
+
+	private void function removeBlockDelimiters( required array nodes ) {
+		for ( var node in arguments.nodes ) {
+			if ( node.type == "block" ) {
+				structDelete( node, "renderOpenDelimiter" );
+				structDelete( node, "renderCloseDelimiter" );
+			}
+			if ( structKeyExists( node, "children" ) ) {
+				removeBlockDelimiters( node.children );
+			}
+		}
+	}
+}

@@ -1,13 +1,13 @@
 import bxModules.bxMustache.models.ITemplateCache;
 
 class implements="ITemplateCache" {
-	variables._callCount = 0;
+	variables.callCount = 0;
 
 	public void function configure( boolean enabled, numeric maxEntries ) {
 	}
 
 	public void function clear() {
-		variables._callCount = 0;
+		variables.callCount = 0;
 	}
 
 	public struct function getStats() {
@@ -20,11 +20,11 @@ class implements="ITemplateCache" {
 		required string closeDelimiter,
 		required function parseFn
 	) {
-		variables._callCount++;
+		variables.callCount++;
 		return arguments.parseFn( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
 	}
 
 	public numeric function getCallCount() {
-		return variables._callCount;
+		return variables.callCount;
 	}
 }

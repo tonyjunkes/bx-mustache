@@ -1,0 +1,76 @@
+import bxModules.bxMustache.models.Mustache;
+
+class extends="testbox.system.BaseSpec" {
+	function run( testResults, testBox ) {
+		describe( "Prepared template rendering", function(){
+			it( "resolves callable partials on every occurrence, including changed and empty sources", function(){
+				var renderer = new Mustache();
+				var calls = 0;
+				var sources = [ "A{{name}}" & char( 13 ) & char( 10 ), "B{{name}}" & char( 10 ), "", "A{{name}}" & char( 13 ) & char( 10 ) ];
+				var partials = { p: function(){ calls++; return sources[ ( ( calls - 1 ) % 4 ) + 1 ]; } };
+				var source = "{{##items}}" & char( 13 ) & char( 10 ) & "  {{>p}}" & char( 13 ) & char( 10 ) & "{{/items}}";
+				var expected = "  AAda" & char( 13 ) & char( 10 ) & "  BAda" & char( 10 ) & "  AAda" & char( 13 ) & char( 10 );
+				for ( var i = 1; i <= 2; i++ ) {
+					expect( renderer.render( source, { name: "Ada", items: [ 1, 2, 3, 4 ] }, partials ) ).toBeWithCase( expected );
+				}
+				expect( calls ).toBe( 8 );
+			} );
+
+			it( "reuses source without reusing rendered values or indenting interpolated newlines", function(){
+				var renderer = new Mustache();
+				var source = "{{##items}}" & char( 10 ) & "  {{>p}}" & char( 10 ) & "{{/items}}";
+				var partials = { p: "{{name}}" & char( 10 ) & "end" & char( 10 ) };
+				var view = { items: [ { name: "A" & char( 10 ) & "B" }, { name: "C" } ] };
+				var expected = "  A" & char( 10 ) & "B" & char( 10 ) & "  end" & char( 10 ) & "  C" & char( 10 ) & "  end" & char( 10 );
+				expect( renderer.render( source, view, partials ) ).toBeWithCase( expected );
+				renderer.configureCache( enabled = false );
+				expect( renderer.render( source, view, partials ) ).toBeWithCase( expected );
+				expect( renderer.getCacheStats().currentEntries ).toBe( 0 );
+			} );
+
+			it( "materializes exact nested lambda bodies from cached source spans", function(){
+				var renderer = new Mustache();
+				var seen = [];
+				var body = "A" & char( 13 ) & char( 10 ) & "{{value}}";
+				var source = "{{##outer}}{{##wrap}}" & body & "{{/wrap}}{{/outer}}";
+				var wrap = function( text, render ){ arrayAppend( seen, text ); return render( text ); };
+				expect( renderer.render( source, { outer: [ { value: "one", wrap: wrap } ] } ) ).toBeWithCase( "A" & char( 13 ) & char( 10 ) & "one" );
+				expect( renderer.render( source, { outer: [ { value: "two", wrap: wrap }, { value: "three", wrap: wrap } ] } ) )
+					.toBeWithCase( "A" & char( 13 ) & char( 10 ) & "twoA" & char( 13 ) & char( 10 ) & "three" );
+				expect( seen ).toHaveLength( 3 );
+				for ( var raw in seen ) { expect( raw ).toBeWithCase( body ); }
+			} );
+
+			it( "isolates prepared sources across simultaneous renders on a shared renderer", function(){
+				var renderer = new Mustache();
+				renderer.configureCache( maxEntries = 2 );
+				var names = [];
+				for ( var i = 1; i <= 6; i++ ) {
+					var name = "preparedTemplates_" & i & "_" & createUUID();
+					arrayAppend( names, name );
+					thread action="run" name=name renderer=renderer ordinal=i {
+						thread.completed = false;
+						thread.failure = "";
+						try {
+							var source = "{{##items}}" & char( 10 ) & "  {{>p}}" & char( 10 ) & "{{/items}}";
+							var partial = "T" & attributes.ordinal & " {{name}}" & char( 10 );
+							var expected = repeatString( "  T" & attributes.ordinal & " N" & attributes.ordinal & char( 10 ), 2 );
+							for ( var j = 1; j <= 20; j++ ) {
+								var rendered = attributes.renderer.render( source, { name: "N" & attributes.ordinal, items: [ 1, 2 ] }, { p: partial } );
+								if ( compare( rendered, expected ) != 0 ) { throw( message = "Cross-render source contamination" ); }
+							}
+							thread.completed = true;
+						} catch ( any e ) {
+							thread.failure = e.message;
+						}
+					};
+				}
+				thread action="join" name=arrayToList( names ) timeout=10000;
+				for ( var name in names ) {
+					expect( bxThread[ name ].completed ).toBeTrue( bxThread[ name ].failure );
+				}
+				expect( renderer.getCacheStats().currentEntries ).toBeLTE( 2 );
+			} );
+		} );
+	}
+}

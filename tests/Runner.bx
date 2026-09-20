@@ -1,0 +1,14 @@
+class {
+	function main( args = [] ) {
+		var suite = new testbox.system.TestBox(
+			directory = server.cli.parsed.options[ "directory" ] ?: "tests.specs",
+			reporter = "console"
+		);
+		println( suite.run() );
+		var results = suite.getResult();
+		// TestBox reports failures without setting the CLI process exit status.
+		if ( results.getTotalFail() > 0 || results.getTotalError() > 0 || results.getTotalSpecs() == 0 ) {
+			throw( type = "Mustache.TestFailure", message = "The test suite failed, errored, or discovered no tests." );
+		}
+	}
+}

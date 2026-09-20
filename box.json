@@ -1,6 +1,6 @@
 {
     "name":"bx-mustache",
-    "version":"0.1.0",
+    "version":"1.0.0",
     "author":"Tony Junkes",
     "homepage":"https://github.com/tonyjunkes/bx-mustache",
     "documentation":"https://github.com/tonyjunkes/bx-mustache",
@@ -18,7 +18,7 @@
         "mustache"
     ],
     "boxlang":{
-        "minimumVersion":"1.16.0",
+        "minimumVersion":"1.17.5",
         "moduleName":"bxMustache"
     },
     "private":false,
@@ -31,7 +31,7 @@
     ],
     "dependencies":{},
     "devDependencies":{
-        "testbox":"7.1.0-snapshot"
+        "testbox":"7.1.0+20"
     },
     "installPaths":{
         "testbox":"testbox/"
@@ -44,6 +44,6 @@
         "AGENTS.md"
     ],
     "scripts":{
-        "test":"boxlang cli --bx-config tests/boxlang.json testbox/system/runners/BoxLangRunner.bx --directory=tests.specs --stream --write-report=false --properties-summary=false --stacktrace=short"
+        "test":"boxlang cli --bx-home tests/.boxlang --bx-config tests/boxlang.json tests/Runner.bx"
     }
 }

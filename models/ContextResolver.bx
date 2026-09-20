@@ -19,12 +19,12 @@ class {
 
 		var parts = arguments.nameParts;
 		if ( arrayLen( parts ) == 0 ) {
-			parts = _buildNameParts( arguments.name );
+			parts = buildNameParts( arguments.name );
 		}
 
 		if ( arrayLen( parts ) == 1 ) {
 			for ( var i = stackCount; i >= 1; i-- ) {
-				var resolved = _resolvePath( stack[ i ], parts );
+				var resolved = resolvePath( stack[ i ], parts );
 				if ( resolved.found ) {
 					return resolved;
 				}
@@ -33,24 +33,21 @@ class {
 			return { found: false, value: "" };
 		}
 
-		var firstPart = [ parts[ 1 ] ];
-		var remainingParts = arraySlice( parts, 2, arrayLen( parts ) - 1 );
-
 		for ( var i = stackCount; i >= 1; i-- ) {
-			var resolved = _resolvePath( stack[ i ], firstPart );
+			var resolved = resolvePath( stack[ i ], parts, 1, 1 );
 			if ( resolved.found ) {
 				if ( isNull( resolved.value ) ) {
 					return { found: false, value: "" };
 				}
 
-				return _resolvePath( resolved.value, remainingParts );
+				return resolvePath( resolved.value, parts, 2 );
 			}
 		}
 
 		return { found: false, value: "" };
 	}
 
-	private array function _buildNameParts( required string name ) {
+	private array function buildNameParts( required string name ) {
 		if ( arguments.name == "." ) {
 			return [ "." ];
 		}
@@ -62,10 +59,15 @@ class {
 		return listToArray( arguments.name, "." );
 	}
 
-	private struct function _resolvePath( required any context, required array parts ) {
+	private struct function resolvePath(
+		required any context,
+		required array parts,
+		numeric startIndex = 1,
+		numeric endIndex = arrayLen( arguments.parts )
+	) {
 		var current = arguments.context;
 
-		for ( var i = 1; i <= arrayLen( arguments.parts ); i++ ) {
+		for ( var i = arguments.startIndex; i <= arguments.endIndex; i++ ) {
 			var key = arguments.parts[ i ];
 			if ( isNull( current ) ) {
 				return { found: false, value: "" };
@@ -84,7 +86,7 @@ class {
 				}
 			}
 
-			var dynamicStep = _resolveDynamicPathStep( current, key );
+			var dynamicStep = resolveDynamicPathStep( current, key );
 			if ( dynamicStep.found ) {
 				current = dynamicStep.value;
 				continue;
@@ -96,7 +98,7 @@ class {
 		return { found: true, value: current };
 	}
 
-	private struct function _resolveDynamicPathStep( required any current, required string key ) {
+	private struct function resolveDynamicPathStep( required any current, required string key ) {
 		var defaultResult = { found: false, value: "" };
 
 		if ( isArray( arguments.current ) || ( isStruct( arguments.current ) && !isObject( arguments.current ) ) ) {
@@ -122,39 +124,27 @@ class {
 			return { found: true, value: arguments.current[ arguments.key ] };
 		}
 
-		return _resolveObjectAccessor( arguments.current, arguments.key );
+		return resolveObjectAccessor( arguments.current, arguments.key );
 	}
 
-	private struct function _resolveObjectAccessor( required any current, required string key ) {
+	private struct function resolveObjectAccessor( required any current, required string key ) {
 		var defaultResult = { found: false, value: "" };
-		var accessorMethodNames = _buildAccessorMethodNames( arguments.key );
-		var metadata = getMetadata( arguments.current );
-
-		if ( isStruct( metadata ) ) {
-			if ( structKeyExists( metadata, "functions" ) && isArray( metadata.functions ) ) {
-				for ( var fn in metadata.functions ) {
-					if (
-						isStruct( fn ) &&
-						structKeyExists( fn, "name" ) &&
-						(
-							compareNoCase( fn.name, accessorMethodNames[ 1 ] ) == 0 ||
-							compareNoCase( fn.name, accessorMethodNames[ 2 ] ) == 0
-						)
-					) {
-						var parameters = structKeyExists( fn, "parameters" ) && isArray( fn.parameters ) ? fn.parameters : [];
-						if ( arrayLen( parameters ) == 0 ) {
-							return {
-								found: true,
-								value: _invokeObjectMethod( arguments.current, fn.name )
-							};
-						}
+		var accessorMethodNames = buildAccessorMethodNames( arguments.key );
+		// Public member lookup includes generated and inherited BoxLang accessors.
+		// Never reflect on their implementation class: its getters expose runtime scopes.
+		if ( isInstanceOf( arguments.current, "ortus.boxlang.runtime.runnables.IClassRunnable" ) ) {
+			for ( var methodName in accessorMethodNames ) {
+				if ( structKeyExists( arguments.current, methodName ) ) {
+					var accessor = arguments.current[ methodName ];
+					if ( isCustomFunction( accessor ) && arrayLen( getMetadata( accessor ).parameters ) == 0 ) {
+						return { found: true, value: invoke( arguments.current, methodName, {} ) };
 					}
 				}
 			}
+			return defaultResult;
 		}
 
-		// BoxLang objects expose their underlying Java class through the native $bx metadata scope.
-		// Calling getClass() on a BoxLang object is itself a dynamic member lookup and can fail.
+		// Java values expose their class through BoxLang's native metadata scope.
 		var javaClass = "";
 		try {
 			javaClass = arguments.current.$bx.$class;
@@ -164,7 +154,7 @@ class {
 		}
 
 		for ( var methodName in accessorMethodNames ) {
-			var methodResult = _findJavaZeroArgMethod( javaClass, methodName );
+			var methodResult = findJavaZeroArgMethod( javaClass, methodName );
 			if ( methodResult.found ) {
 				return {
 					found: true,
@@ -187,7 +177,7 @@ class {
 		}
 	}
 
-	private struct function _findJavaZeroArgMethod( required any javaClass, required string methodName ) {
+	private struct function findJavaZeroArgMethod( required any javaClass, required string methodName ) {
 		if ( !len( arguments.methodName ) ) {
 			return { found: false };
 		}
@@ -206,11 +196,7 @@ class {
 		}
 	}
 
-	private any function _invokeObjectMethod( required any current, required string methodName ) {
-		return invoke( arguments.current, arguments.methodName, {} );
-	}
-
-	private array function _buildAccessorMethodNames( required string key ) {
+	private array function buildAccessorMethodNames( required string key ) {
 		var normalizedKey = trim( arguments.key );
 		if ( !len( normalizedKey ) ) {
 			return [ "", "" ];

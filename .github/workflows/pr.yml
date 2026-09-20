@@ -1,13 +1,28 @@
-name: Tests
+name: Pull request checks
 
 on:
-  push:
   pull_request:
+    branches:
+      - main
+      - develop
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  tests:
     name: BoxLang ${{ matrix.boxlang-version }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -16,7 +31,7 @@ jobs:
           - snapshot
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Set up BoxLang
@@ -37,10 +52,13 @@ jobs:
           consumer_dir="${RUNNER_TEMP}/bx-mustache-consumer"
           export BOXLANG_HOME="${consumer_dir}/.boxlang"
           mkdir -p "${consumer_dir}/boxlang_modules"
-          cp tests/consumer/Smoke.bx tests/consumer/boxlang.json "${consumer_dir}/"
+          cp tests/consumer/*.bx tests/consumer/*.json "${consumer_dir}/"
           cd "${consumer_dir}"
           box install "${GITHUB_WORKSPACE}" --directory="boxlang_modules" --production --save=false
           boxlang --bx-config boxlang.json Smoke.bx
+          boxlang --bx-config boxlang.json Settings.bx
+          MUSTACHE_EXPECT_CACHE_ENABLED=true MUSTACHE_EXPECT_CACHE_MAX_ENTRIES=2 boxlang --bx-config cache-enabled.json Settings.bx
+          MUSTACHE_EXPECT_CACHE_ENABLED=false MUSTACHE_EXPECT_CACHE_MAX_ENTRIES=3 boxlang --bx-config cache-disabled.json Settings.bx
 
       - name: Inspect package metadata
         run: box package show

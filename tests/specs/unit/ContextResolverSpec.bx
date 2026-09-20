@@ -97,7 +97,7 @@ class extends="testbox.system.BaseSpec" {
 					expect( publicResult.value ).toBe( "Architect" );
 				} );
 
-				it( "resolves native object generated accessors", function(){
+				it( "resolves explicit native object accessors", function(){
 					var accessorFixture = new AccessorLookupFixtureClass()
 						.init( "Grace" );
 

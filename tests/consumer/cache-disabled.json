@@ -1,0 +1,11 @@
+{
+  "modules": {
+    "bxMustache": {
+      "enabled": true,
+      "settings": {
+        "cacheEnabled": false,
+        "cacheMaxEntries": 3
+      }
+    }
+  }
+}

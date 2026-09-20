@@ -8,20 +8,19 @@ class {
 			return 1;
 		}
 
-		var lastLineFeed = arguments.template.lastIndexOf( char( 10 ), zeroBasedEnd );
-		var lastCarriageReturn = arguments.template.lastIndexOf( char( 13 ), zeroBasedEnd );
-
-		return max( lastLineFeed, lastCarriageReturn ) + 2;
-	}
-
-	public static numeric function findLastPosition( required string needle, required string haystack ) {
-		var needleLength = len( arguments.needle );
-		if ( needleLength == 0 || needleLength > len( arguments.haystack ) ) {
-			return 0;
+		// Search bounded windows backwards so an absent CR or LF never causes
+		// a second scan of the entire prefix for each inheritance node.
+		var end = zeroBasedEnd + 1;
+		while ( end > 0 ) {
+			var start = max( 0, end - 256 );
+			var window = arguments.template.substring( start, end );
+			var lastBreak = max( window.lastIndexOf( char( 10 ) ), window.lastIndexOf( char( 13 ) ) );
+			if ( lastBreak >= 0 ) {
+				return start + lastBreak + 2;
+			}
+			end = start;
 		}
-
-		var lastIndex = arguments.haystack.lastIndexOf( arguments.needle );
-		return lastIndex < 0 ? 0 : lastIndex + 1;
+		return 1;
 	}
 
 	public static numeric function findNextLineBreakPos( required string template, required numeric startPos ) {
@@ -29,18 +28,9 @@ class {
 			return 0;
 		}
 
-		var nextLineFeed = find( char( 10 ), arguments.template, arguments.startPos );
-		var nextCarriageReturn = find( char( 13 ), arguments.template, arguments.startPos );
-
-		if ( nextLineFeed == 0 ) {
-			return nextCarriageReturn;
-		}
-
-		if ( nextCarriageReturn == 0 ) {
-			return nextLineFeed;
-		}
-
-		return min( nextLineFeed, nextCarriageReturn );
+		// One search stops at either newline; separate searches rescan the entire
+		// remaining suffix for the absent character in LF-only or CR-only text.
+		return reFind( "[\r\n]", arguments.template, arguments.startPos );
 	}
 
 	public static numeric function getLineBreakLength( required string template, required numeric lineBreakPos ) {
@@ -72,15 +62,7 @@ class {
 			return normalizedText;
 		}
 
-		if ( left( normalizedText, 2 ) == char( 13 ) & char( 10 ) ) {
-			return mid( normalizedText, 3, len( normalizedText ) - 2 );
-		}
-
-		if ( left( normalizedText, 1 ) == char( 13 ) || left( normalizedText, 1 ) == char( 10 ) ) {
-			return mid( normalizedText, 2, len( normalizedText ) - 1 );
-		}
-
-		return normalizedText;
+		return reReplace( normalizedText, "^[ \t]*(\r\n|\r|\n)", "" );
 	}
 
 	public static boolean function endsWithLineBreak( required string value ) {
@@ -89,7 +71,6 @@ class {
 		}
 
 		return right( arguments.value, 1 ) == char( 10 )
-			|| right( arguments.value, 1 ) == char( 13 )
-			|| right( arguments.value, 2 ) == char( 13 ) & char( 10 );
+			|| right( arguments.value, 1 ) == char( 13 );
 	}
 }

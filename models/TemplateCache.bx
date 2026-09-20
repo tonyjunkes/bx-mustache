@@ -1,49 +1,54 @@
+import java.util.List;
+import java.util.LinkedHashMap;
+
 /**
  * Thread-safe, in-memory LRU cache for parsed template ASTs.
  *
- * A ordered, case-sensitive struct stores both entries and recency.
- * BoxLang locks protect reads and writes; deleting and reinserting a hit moves
- * it to the tail without scanning a separate order list. The cache remains
+ * An access-ordered Java map stores exact source/delimiter tuples and recency.
+ * BoxLang locks protect reads and writes, including hits that update recency.
+ * Tuple keys retain source strings instead of copying them. The cache remains
  * instance-local so isolated renderers do not share lifecycle or eviction state.
  */
+@accessors( false )
 class implements="ITemplateCache" {
-	variables._entries = structNew( "ordered-casesensitive" );
-	variables._cacheMaxEntries = 200;
-	variables._cacheEnabled = true;
-	variables._cacheGeneration = 0;
-	variables._cacheLockName = "Mustache.TemplateCache." & replace( createUUID(), "-", "", "all" );
+	property name="cacheMaxEntries" type="numeric" default=200;
+	property name="cacheEnabled" type="boolean" default=true;
+	property name="cacheGeneration" type="numeric" default=0;
+
+	final variables.entries = new LinkedHashMap( 16, 0.75, true );
+	final variables.cacheLockName = "Mustache.TemplateCache.#replace( createUUID(), "-", "", "all" )#";
 
 	public void function configure(
 		boolean enabled = true,
 		numeric maxEntries = 200
 	) {
-		bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
-			variables._cacheEnabled = arguments.enabled;
-			variables._cacheMaxEntries = max( 1, int( arguments.maxEntries ) );
-			variables._cacheGeneration++;
+		bx:lock name=variables.cacheLockName type="exclusive" timeout="5" {
+			variables.cacheEnabled = arguments.enabled;
+			variables.cacheMaxEntries = max( 1, int( arguments.maxEntries ) );
+			variables.cacheGeneration++;
 
-			if ( !variables._cacheEnabled ) {
-				_resetState();
+			if ( !variables.cacheEnabled ) {
+				resetState();
 			} else {
-				_evictIfNeeded();
+				evictIfNeeded();
 			}
 		}
 	}
 
 	public void function clear() {
-		bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
-			variables._cacheGeneration++;
-			_resetState();
+		bx:lock name=variables.cacheLockName type="exclusive" timeout="5" {
+			variables.cacheGeneration++;
+			resetState();
 		}
 	}
 
 	public struct function getStats() {
 		var stats = {};
-		bx:lock name=variables._cacheLockName type="readonly" timeout="5" {
+		bx:lock name=variables.cacheLockName type="readonly" timeout="5" {
 			stats = {
-				enabled: variables._cacheEnabled,
-				maxEntries: variables._cacheMaxEntries,
-				currentEntries: structCount( variables._entries )
+				enabled: variables.cacheEnabled,
+				maxEntries: variables.cacheMaxEntries,
+				currentEntries: variables.entries.size()
 			};
 		}
 		return stats;
@@ -55,18 +60,20 @@ class implements="ITemplateCache" {
 		required string closeDelimiter,
 		required function parseFn
 	) {
-		var cacheKey = _buildKey( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
+		var cacheKey = [];
 		var cachedAst = [];
 		var hasCached = false;
 		var cacheEnabled = false;
 
 		// A hit is moved to the tail, so this must be exclusive.
-		bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
-			cacheEnabled = variables._cacheEnabled;
-			if ( cacheEnabled && structKeyExists( variables._entries, cacheKey ) ) {
-				hasCached = true;
-				cachedAst = variables._entries[ cacheKey ];
-				_touchKey( cacheKey, cachedAst );
+		bx:lock name=variables.cacheLockName type="exclusive" timeout="5" {
+			cacheEnabled = variables.cacheEnabled;
+			if ( cacheEnabled ) {
+				cacheKey = buildKey( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
+				if ( variables.entries.containsKey( cacheKey ) ) {
+					hasCached = true;
+					cachedAst = variables.entries.get( cacheKey );
+				}
 			}
 		}
 
@@ -79,7 +86,7 @@ class implements="ITemplateCache" {
 		}
 
 		// Coalesce only identical misses. Different templates retain parallelism.
-		var keyLockName = variables._cacheLockName & ".key." & cacheKey.hashCode();
+		var keyLockName = "#variables.cacheLockName#.key.#cacheKey.hashCode()#";
 		var result = [];
 		var hasResult = false;
 
@@ -87,12 +94,11 @@ class implements="ITemplateCache" {
 			var currentGeneration = 0;
 			var currentEnabled = false;
 
-			bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
-				currentEnabled = variables._cacheEnabled;
-				currentGeneration = variables._cacheGeneration;
-				if ( currentEnabled && structKeyExists( variables._entries, cacheKey ) ) {
-					result = variables._entries[ cacheKey ];
-					_touchKey( cacheKey, result );
+			bx:lock name=variables.cacheLockName type="exclusive" timeout="5" {
+				currentEnabled = variables.cacheEnabled;
+				currentGeneration = variables.cacheGeneration;
+				if ( currentEnabled && variables.entries.containsKey( cacheKey ) ) {
+					result = variables.entries.get( cacheKey );
 					hasResult = true;
 				}
 			}
@@ -106,15 +112,15 @@ class implements="ITemplateCache" {
 					result = ast;
 					hasResult = true;
 
-					bx:lock name=variables._cacheLockName type="exclusive" timeout="5" {
+					bx:lock name=variables.cacheLockName type="exclusive" timeout="5" {
 						if (
-							variables._cacheEnabled &&
-							variables._cacheGeneration == currentGeneration
+							variables.cacheEnabled &&
+							variables.cacheGeneration == currentGeneration
 						) {
-							if ( !structKeyExists( variables._entries, cacheKey ) ) {
-								variables._entries[ cacheKey ] = ast;
+							if ( !variables.entries.containsKey( cacheKey ) ) {
+								variables.entries.put( cacheKey, ast );
 							}
-							_evictIfNeeded();
+							evictIfNeeded();
 						}
 					}
 				}
@@ -124,36 +130,28 @@ class implements="ITemplateCache" {
 		return result;
 	}
 
-	private void function _resetState() {
-		structClear( variables._entries );
+	private void function resetState() {
+		variables.entries.clear();
 	}
 
-	private string function _buildKey(
+	private any function buildKey(
 		required string template,
 		required string openDelimiter,
 		required string closeDelimiter
 	) {
-		// Length-prefix each component so arbitrary delimiter/template content remains
-		// an exact, collision-free composite key without hashing or copying prefixes.
-		return len( arguments.openDelimiter ) & ":" & arguments.openDelimiter
-			& len( arguments.closeDelimiter ) & ":" & arguments.closeDelimiter
-			& len( arguments.template ) & ":" & arguments.template;
+		// List equality compares all three strings case-sensitively, including on
+		// hash collisions. Reused Java strings also reuse their computed hashes.
+		return List::of( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
 	}
 
-	private void function _touchKey( required any cacheKey, required any value ) {
-		structDelete( variables._entries, arguments.cacheKey );
-		variables._entries[ arguments.cacheKey ] = arguments.value;
-	}
-
-	private void function _evictIfNeeded() {
-		var excess = structCount( variables._entries ) - variables._cacheMaxEntries;
+	private void function evictIfNeeded() {
+		var excess = variables.entries.size() - variables.cacheMaxEntries;
 		if ( excess <= 0 ) {
 			return;
 		}
 
-		var keys = structKeyArray( variables._entries );
 		for ( var i = 1; i <= excess; i++ ) {
-			structDelete( variables._entries, keys[ i ] );
+			variables.entries.pollFirstEntry();
 		}
 	}
 

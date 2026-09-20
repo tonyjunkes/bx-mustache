@@ -1,0 +1,71 @@
+import bxModules.bxMustache.models.Mustache;
+import tests.resources.LegacyBlockParser;
+
+class extends="testbox.system.BaseSpec" {
+	function run() {
+		describe( "Inheritance rendering regressions", () => {
+			it( "renders multiline blocks from an injected parser without delimiter metadata", () => {
+				var renderer = new Mustache( parser = new LegacyBlockParser() );
+				var newline = char( 10 );
+				expect( renderer.render( "{{$body}}#newline#Hello#newline#{{/body}}" ) )
+					.toBeWithCase( "Hello#newline#" );
+				expect( renderer.render(
+					"{{<layout}}{{$body}}#newline#Hello#newline#{{/body}}{{/layout}}",
+					{},
+					{ layout: "{{$body}}Default{{/body}}" }
+				) ).toBeWithCase( "Hello#newline#" );
+			} );
+
+			it( "preserves content following standalone blocks and parents with LF and CRLF", () => {
+				var renderer = new Mustache();
+				for ( var newline in [ char( 10 ), char( 13 ) & char( 10 ) ] ) {
+					for ( var suffix in [ "Y", "YZ", "  next" & newline & "last" ] ) {
+						expect( renderer.render( "{{$body}}#newline#X#newline#{{/body}}#newline##suffix#" ) )
+							.toBeWithCase( "X#newline##suffix#" );
+						expect( renderer.render( "{{<layout}}#newline#{{/layout}}#newline##suffix#", {}, { layout: "X#newline#" } ) )
+							.toBeWithCase( "X#newline##suffix#" );
+					}
+				}
+			} );
+
+			it( "removes standalone block opening whitespace without losing the body", () => {
+				var renderer = new Mustache();
+				for ( var newline in [ char( 10 ), char( 13 ) & char( 10 ) ] ) {
+					for ( var padding in [ "  ", char( 9 ) ] ) {
+						expect( renderer.render( "{{$body}}#padding##newline#X#newline#{{/body}}" ) )
+							.toBeWithCase( "X#newline#" );
+					}
+				}
+			} );
+
+			it( "preserves alternate delimiters in multiline default and overriding blocks", () => {
+				var renderer = new Mustache();
+				for ( var newline in [ char( 10 ), char( 13 ) & char( 10 ) ] ) {
+					var block = "<%$body%>#newline#<%name%>#newline#<%/body%>";
+					expect( renderer.render( "{{=<% %>=}}" & block, { name: "Ada" } ) )
+						.toBeWithCase( "Ada#newline#" );
+					expect( renderer.render( "{{=<% %>=}}<%<layout%>#block#<%/layout%>", { name: "Ada" }, {
+						layout: "  {{$body}}#newline#  default#newline#  {{/body}}#newline#"
+					} ) ).toBeWithCase( "  Ada#newline#" );
+				}
+			} );
+
+			it( "keeps case-distinct block overrides separate through multiple parents", () => {
+				expect( new Mustache().render(
+					"{{<parent}}{{$A}}upper{{/A}}{{$a}}lower{{/a}}{{/parent}}", {}, {
+						parent: "{{<layout}}{{$A}}parent{{/A}}{{/layout}}",
+						layout: "{{$A}}X{{/A}}|{{$a}}Y{{/a}}"
+					}
+				) ).toBeWithCase( "upper|lower" );
+			} );
+
+			it( "rejects closing tags whose case differs from their opening tag", () => {
+				var renderer = new Mustache();
+				for ( var sigil in [ "##", "^", "$", "<" ] ) {
+					expect( () => renderer.render( "{{#sigil#name}}text{{/NAME}}", { name: true } ) )
+						.toThrow( type = "Mustache.ParserSectionException" );
+				}
+			} );
+		} );
+	}
+}

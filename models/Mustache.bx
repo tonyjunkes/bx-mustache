@@ -4,17 +4,26 @@ import bxModules.bxMustache.models.TemplateCache as MustacheTemplateCache;
 import bxModules.bxMustache.models.ContextResolver as MustacheContextResolver;
 import bxModules.bxMustache.models.StringUtil;
 
+import java.util.List;
+import java.util.LinkedHashMap;
+
 /**
- * Native BoxLang Mustache renderer.
+ * Mustache renderer.
  *
  * The tokenizer and parser remain separate to keep this public facade focused on
  * rendering, caching, and context resolution.
  */
+@accessors( false )
 class {
-	variables._tokenizer = new MustacheTokenizer();
-	variables._parser = new MustacheParser();
-	variables._cache = new MustacheTemplateCache();
-	variables._contextResolver = new MustacheContextResolver();
+	property name="tokenizer" type="any";
+	property name="parser" type="any";
+	property name="cache" type="any";
+	property name="compileTemplates" type="boolean" default=true;
+
+	variables.tokenizer = new MustacheTokenizer();
+	variables.parser = new MustacheParser();
+	variables.cache = new MustacheTemplateCache();
+	variables.contextResolver = new MustacheContextResolver();
 
 	public Mustache function init(
 		any tokenizer,
@@ -22,15 +31,17 @@ class {
 		any cache
 	) {
 		if ( !isNull( arguments.tokenizer ) ) {
-			variables._tokenizer = arguments.tokenizer;
+			variables.tokenizer = arguments.tokenizer;
 		}
 
 		if ( !isNull( arguments.parser ) ) {
-			variables._parser = arguments.parser;
+			variables.parser = arguments.parser;
+			// Injected parsers retain the existing parse(tokens, template) contract.
+			variables.compileTemplates = false;
 		}
 
 		if ( !isNull( arguments.cache ) ) {
-			variables._cache = arguments.cache;
+			variables.cache = arguments.cache;
 		}
 
 		return this;
@@ -41,47 +52,50 @@ class {
 		string openDelimiter = "{{",
 		string closeDelimiter = "}}"
 	) {
-		return variables._tokenizer.tokenize( argumentCollection = arguments );
+		return variables.tokenizer.tokenize( argumentCollection = arguments );
 	}
 
 	public array function parse( required array tokens, required string template ) {
-		return variables._parser.parse( argumentCollection = arguments );
+		return variables.parser.parse( argumentCollection = arguments );
 	}
 
 	public string function render( required string template, any view = {}, struct partials = {} ) {
-		var ast = _getParsedTemplate( arguments.template );
-		var state = _newRenderState( [ arguments.view ], arguments.partials, {} );
-		return _renderNodes( ast, state );
+		var ast = getParsedTemplate( arguments.template );
+		var state = newRenderState( [ arguments.view ], arguments.partials, {} );
+		return renderNodes( ast, state );
 	}
 
 	public void function configureCache( boolean enabled = true, numeric maxEntries = 200 ) {
-		variables._cache.configure( argumentCollection = arguments );
+		variables.cache.configure( argumentCollection = arguments );
 	}
 
 	public void function clearCache() {
-		variables._cache.clear();
+		variables.cache.clear();
 	}
 
 	public struct function getCacheStats() {
-		return variables._cache.getStats();
+		return variables.cache.getStats();
 	}
 
 	// --- Rendering ---
 
-	private struct function _newRenderState(
+	private struct function newRenderState(
 		required array contextStack,
 		required struct partials,
-		required struct blockOverrides
+		required struct blockOverrides,
+		any preparedTemplates
 	) {
 		return {
 			contextStack: arguments.contextStack,
 			partials: arguments.partials,
-			blockOverrides: arguments.blockOverrides
+			blockOverrides: arguments.blockOverrides,
+			preparedTemplates: isNull( arguments.preparedTemplates )
+				? new LinkedHashMap( 16, 0.75, true ) : arguments.preparedTemplates
 		};
 	}
 
-	private string function _renderNodes( required array nodes, required struct state ) {
-		var outputChunks = [];
+	private string function renderNodes( required array nodes, required struct state ) {
+		var output = sb{ "" };
 		var nodeCount = arrayLen( arguments.nodes );
 
 		for ( var i = 1; i <= nodeCount; i++ ) {
@@ -89,58 +103,58 @@ class {
 
 			switch ( node.type ) {
 				case "text":
-					arrayAppend( outputChunks, node.value );
+					output &= node.value;
 					break;
 
 				case "variable":
 				case "unescaped":
-					var lookup = variables._contextResolver.lookup( node.name, arguments.state.contextStack, node.nameParts );
+					var lookup = variables.contextResolver.lookup( node.name, arguments.state.contextStack, node.nameParts );
 					if ( !lookup.found ) {
 						break;
 					}
 
 					var value = lookup.value;
 					if ( isCustomFunction( value ) ) {
-						value = _invokeVariableLambda( value, arguments.state );
+						value = invokeVariableLambda( value, arguments.state );
 					}
 
-					var renderedValue = _toString( value );
+					var renderedValue = stringifyValue( value );
 					if ( node.type == "variable" ) {
-						arrayAppend( outputChunks, _escapeHtml( renderedValue ) );
+						output &= escapeHtml( renderedValue );
 					} else {
-						arrayAppend( outputChunks, renderedValue );
+						output &= renderedValue;
 					}
 					break;
 
 				case "partial":
-					var resolvedPartial = _resolveTemplate( node.name, arguments.state );
+					var resolvedPartial = resolveTemplate( node.name, arguments.state );
 					if ( resolvedPartial.found ) {
 						var partialTemplate = resolvedPartial.template;
 						if ( len( node.indent ) ) {
-							partialTemplate = _indentPartialTemplate( partialTemplate, node.indent );
+							partialTemplate = prepareTemplate( partialTemplate, arguments.state, node.indent );
 						}
 
-						arrayAppend( outputChunks, _renderTemplate(
+						output &= renderTemplate(
 							partialTemplate,
 							arguments.state,
 							arguments.state.blockOverrides,
 							"{{",
 							"}}"
-						) );
+						);
 					}
 					break;
 
 				case "parent":
-					arrayAppend( outputChunks, _renderParent( node, arguments.state ) );
+					output &= renderParent( node, arguments.state );
 					break;
 
 				case "block":
-					arrayAppend( outputChunks, _renderBlock( node, arguments.state ) );
+					output &= renderBlock( node, arguments.state );
 					break;
 
 				case "section":
 				case "inverted":
-					arrayAppend( outputChunks, _renderSection( node, arguments.state ) );
+					output &= renderSection( node, arguments.state );
 					break;
 
 				default:
@@ -148,10 +162,10 @@ class {
 			}
 		}
 
-		return arrayToList( outputChunks, "" );
+		return output.toString();
 	}
 
-	private struct function _resolvePartialName( required string partialName, required struct state ) {
+	private struct function resolvePartialName( required string partialName, required struct state ) {
 		var trimmedPartialName = trim( arguments.partialName );
 		if ( !( len( trimmedPartialName ) > 0 && left( trimmedPartialName, 1 ) == "*" ) ) {
 			return {
@@ -165,19 +179,19 @@ class {
 			return { found: false, name: "" };
 		}
 
-		var lookup = variables._contextResolver.lookup( dynamicName, arguments.state.contextStack );
+		var lookup = variables.contextResolver.lookup( dynamicName, arguments.state.contextStack );
 		if ( !lookup.found || isNull( lookup.value ) ) {
 			return { found: false, name: "" };
 		}
 
 		return {
 			found: true,
-			name: _toString( lookup.value )
+			name: stringifyValue( lookup.value )
 		};
 	}
 
-	private struct function _resolveTemplate( required string templateName, required struct state ) {
-		var resolvedName = _resolvePartialName( arguments.templateName, arguments.state );
+	private struct function resolveTemplate( required string templateName, required struct state ) {
+		var resolvedName = resolvePartialName( arguments.templateName, arguments.state );
 		if ( !resolvedName.found || !structKeyExists( arguments.state.partials, resolvedName.name ) ) {
 			return { found: false, name: "", template: "" };
 		}
@@ -190,22 +204,22 @@ class {
 		return {
 			found: true,
 			name: resolvedName.name,
-			template: _toString( templateValue )
+			template: stringifyValue( templateValue )
 		};
 	}
 
-	private string function _renderSection( required struct node, required struct state ) {
-		var lookup = variables._contextResolver.lookup(
+	private string function renderSection( required struct node, required struct state ) {
+		var lookup = variables.contextResolver.lookup(
 			arguments.node.name,
 			arguments.state.contextStack,
 			arguments.node.nameParts
 		);
 		var found = lookup.found;
 		var value = found ? lookup.value : "";
-		var truthy = found && _isTruthy( value );
+		var truthy = found && isTruthy( value );
 
 		if ( arguments.node.type == "inverted" ) {
-			return truthy ? "" : _renderNodes( arguments.node.children, arguments.state );
+			return truthy ? "" : renderNodes( arguments.node.children, arguments.state );
 		}
 
 		if ( !found ) {
@@ -213,9 +227,9 @@ class {
 		}
 
 		if ( isCustomFunction( value ) ) {
-			return _invokeSectionLambda(
+			return invokeSectionLambda(
 				value,
-				arguments.node.rawText,
+				rawNodeText( arguments.node ),
 				arguments.state,
 				arguments.node.renderOpenDelimiter,
 				arguments.node.renderCloseDelimiter
@@ -228,50 +242,50 @@ class {
 				return "";
 			}
 
-			var arrayOutputChunks = [];
+			var output = sb{ "" };
 			for ( var i = 1; i <= valueCount; i++ ) {
-				arrayAppend( arrayOutputChunks, _withContext( arguments.state, value[ i ], arguments.node ) );
+				output &= withContext( arguments.state, value[ i ], arguments.node );
 			}
-			return arrayToList( arrayOutputChunks, "" );
+			return output.toString();
 		}
 
 		if ( isStruct( value ) || isObject( value ) ) {
-			return _withContext( arguments.state, value, arguments.node );
+			return withContext( arguments.state, value, arguments.node );
 		}
 
 		if ( !truthy ) {
 			return "";
 		}
 
-		return _withContext( arguments.state, value, arguments.node );
+		return withContext( arguments.state, value, arguments.node );
 	}
 
-	private string function _withContext( required struct state, required any contextValue, required struct node ) {
+	private string function withContext( required struct state, required any contextValue, required struct node ) {
 		arrayAppend( arguments.state.contextStack, arguments.contextValue );
 		try {
-			return _renderNodes( arguments.node.children, arguments.state );
+			return renderNodes( arguments.node.children, arguments.state );
 		} finally {
 			arrayDeleteAt( arguments.state.contextStack, arrayLen( arguments.state.contextStack ) );
 		}
 	}
 
-	private string function _renderParent( required struct node, required struct state ) {
-		var resolvedParent = _resolveTemplate( arguments.node.name, arguments.state );
+	private string function renderParent( required struct node, required struct state ) {
+		var resolvedParent = resolveTemplate( arguments.node.name, arguments.state );
 		if ( !resolvedParent.found ) {
 			return "";
 		}
 
-		var effectiveOverrides = _collectBlockOverrides( arguments.node.children );
+		var effectiveOverrides = collectBlockOverrides( arguments.node.children );
 		if ( structCount( arguments.state.blockOverrides ) ) {
 			structAppend( effectiveOverrides, arguments.state.blockOverrides, true );
 		}
 
 		var parentTemplate = resolvedParent.template;
 		if ( len( arguments.node.expansionIndent ) ) {
-			parentTemplate = _indentPartialTemplate( parentTemplate, arguments.node.expansionIndent );
+			parentTemplate = prepareTemplate( parentTemplate, arguments.state, arguments.node.expansionIndent );
 		}
 
-		return _renderTemplate(
+		return renderTemplate(
 			parentTemplate,
 			arguments.state,
 			effectiveOverrides,
@@ -280,7 +294,7 @@ class {
 		);
 	}
 
-	private string function _renderBlock( required struct node, required struct state ) {
+	private string function renderBlock( required struct node, required struct state ) {
 		var sourceNode = structKeyExists( arguments.state.blockOverrides, arguments.node.name )
 			? arguments.state.blockOverrides[ arguments.node.name ]
 			: arguments.node;
@@ -290,7 +304,7 @@ class {
 			!len( sourceNode.definitionIndent ) &&
 			!len( arguments.node.expansionIndent )
 		) {
-			var renderedChildren = _renderNodes( sourceNode.children, arguments.state );
+			var renderedChildren = renderNodes( sourceNode.children, arguments.state );
 			if (
 				len( arguments.node.trailingLineBreak ) &&
 				len( renderedChildren ) &&
@@ -302,21 +316,24 @@ class {
 			return renderedChildren;
 		}
 
-		var blockTemplate = StringUtil::normalizeBlockSourceText( sourceNode.rawText, sourceNode.stripLeadingLineBreak );
-		if ( len( sourceNode.definitionIndent ) ) {
-			blockTemplate = _dedentTemplate( blockTemplate, sourceNode.definitionIndent );
-		}
+		var hasRawText = structKeyExists( sourceNode, "rawText" );
+		var blockSource = hasRawText ? sourceNode.rawText : sourceNode.source;
+		var blockTemplate = prepareTemplate(
+			blockSource,
+			arguments.state,
+			arguments.node.expansionIndent,
+			sourceNode.stripLeadingLineBreak,
+			sourceNode.definitionIndent,
+			hasRawText ? 1 : sourceNode.rawStartPos,
+			hasRawText ? len( blockSource ) : sourceNode.rawLength
+		);
 
-		if ( len( arguments.node.expansionIndent ) ) {
-			blockTemplate = _indentPartialTemplate( blockTemplate, arguments.node.expansionIndent );
-		}
-
-		var renderedBlock = _renderTemplate(
+		var renderedBlock = renderTemplate(
 			blockTemplate,
 			arguments.state,
 			arguments.state.blockOverrides,
-			"{{",
-			"}}"
+			structKeyExists( sourceNode, "renderOpenDelimiter" ) ? sourceNode.renderOpenDelimiter : "{{",
+			structKeyExists( sourceNode, "renderCloseDelimiter" ) ? sourceNode.renderCloseDelimiter : "}}"
 		);
 		if ( len( arguments.node.trailingLineBreak ) && len( renderedBlock ) && !StringUtil::endsWithLineBreak( renderedBlock ) ) {
 			renderedBlock &= arguments.node.trailingLineBreak;
@@ -327,7 +344,7 @@ class {
 
 	// --- Lambda Handling ---
 
-	private numeric function _getFunctionArity( required function lambdaFn ) {
+	private numeric function getFunctionArity( required function lambdaFn ) {
 		var lambdaMetadata = getMetadata( arguments.lambdaFn );
 		if ( isStruct( lambdaMetadata ) && structKeyExists( lambdaMetadata, "parameters" ) && isArray( lambdaMetadata.parameters ) ) {
 			return arrayLen( lambdaMetadata.parameters );
@@ -336,16 +353,16 @@ class {
 		return 0;
 	}
 
-	private string function _invokeVariableLambda( required function lambdaFn, required struct state ) {
-		var arity = _getFunctionArity( arguments.lambdaFn );
+	private string function invokeVariableLambda( required function lambdaFn, required struct state ) {
+		var arity = getFunctionArity( arguments.lambdaFn );
 		var result = arity <= 0
 			? arguments.lambdaFn()
 			: arguments.lambdaFn( arguments.state.contextStack[ arrayLen( arguments.state.contextStack ) ] );
 
-		return _renderLambdaResult( result, arguments.state, "{{", "}}" );
+		return renderLambdaResult( result, arguments.state, "{{", "}}" );
 	}
 
-	private string function _invokeSectionLambda(
+	private string function invokeSectionLambda(
 		required function lambdaFn,
 		required string rawText,
 		required struct state,
@@ -357,7 +374,7 @@ class {
 		var sectionCloseDelimiter = arguments.closeDelimiter;
 
 		var renderFn = function( required string templateText ) {
-			return _renderTemplate(
+			return renderTemplate(
 				templateText,
 				sectionState,
 				sectionState.blockOverrides,
@@ -367,7 +384,7 @@ class {
 		};
 
 		var result = "";
-		var arity = _getFunctionArity( arguments.lambdaFn );
+		var arity = getFunctionArity( arguments.lambdaFn );
 
 		if ( arity <= 0 ) {
 			result = arguments.lambdaFn();
@@ -377,7 +394,7 @@ class {
 			result = arguments.lambdaFn( arguments.rawText, renderFn );
 		}
 
-		return _renderLambdaResult(
+		return renderLambdaResult(
 			result,
 			arguments.state,
 			arguments.openDelimiter,
@@ -385,18 +402,18 @@ class {
 		);
 	}
 
-	private string function _renderLambdaResult(
+	private string function renderLambdaResult(
 		any result,
 		required struct state,
 		required string openDelimiter,
 		required string closeDelimiter
 	) {
-		var rendered = _toString( arguments.result );
+		var rendered = stringifyValue( arguments.result );
 		if ( find( arguments.openDelimiter, rendered ) == 0 ) {
 			return rendered;
 		}
 
-		return _renderTemplate(
+		return renderTemplate(
 			rendered,
 			arguments.state,
 			arguments.state.blockOverrides,
@@ -407,45 +424,45 @@ class {
 
 	// --- Template Processing ---
 
-	private string function _renderTemplate(
+	private string function renderTemplate(
 		required string template,
 		required struct state,
 		required struct blockOverrides,
 		string openDelimiter = "{{",
 		string closeDelimiter = "}}"
 	) {
-		var nestedAst = _getParsedTemplate( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
-		var nestedState = _newRenderState(
+		var nestedAst = getParsedTemplate( arguments.template, arguments.openDelimiter, arguments.closeDelimiter );
+		var nestedState = newRenderState(
 			arguments.state.contextStack,
 			arguments.state.partials,
-			arguments.blockOverrides
+			arguments.blockOverrides,
+			arguments.state.preparedTemplates
 		);
-		return _renderNodes( nestedAst, nestedState );
+		return renderNodes( nestedAst, nestedState );
 	}
 
-	private array function _getParsedTemplate(
+	private array function getParsedTemplate(
 		required string template,
 		string openDelimiter = "{{",
 		string closeDelimiter = "}}"
 	) {
-		var tokenizer = variables._tokenizer;
-		var parser = variables._parser;
+		var tokenizer = variables.tokenizer;
+		var parser = variables.parser;
+		var compileTemplates = variables.compileTemplates;
 
-		return variables._cache.getOrSet(
+		return variables.cache.getOrSet(
 			arguments.template,
 			arguments.openDelimiter,
 			arguments.closeDelimiter,
 			function( required string template, required string openDelimiter, required string closeDelimiter ) {
-				return parser.parse(
-					tokenizer.tokenize( template, openDelimiter, closeDelimiter ),
-					template
-				);
+				var tokens = tokenizer.tokenize( template, openDelimiter, closeDelimiter );
+				return compileTemplates ? parser.compile( tokens, template ) : parser.parse( tokens, template );
 			}
 		);
 	}
 
-	private struct function _collectBlockOverrides( required array nodes ) {
-		var overrides = {};
+	private struct function collectBlockOverrides( required array nodes ) {
+		var overrides = structNew( "casesensitive" );
 
 		for ( var i = 1; i <= arrayLen( arguments.nodes ); i++ ) {
 			var node = arguments.nodes[ i ];
@@ -459,7 +476,47 @@ class {
 
 	// --- Text Formatting ---
 
-	private string function _dedentTemplate(
+	private string function rawNodeText( required struct node ) {
+		return structKeyExists( arguments.node, "rawText" ) ? arguments.node.rawText
+			: mid( arguments.node.source, arguments.node.rawStartPos, arguments.node.rawLength );
+	}
+
+	private string function prepareTemplate(
+		required string template,
+		required struct state,
+		required string indentation,
+		boolean stripLeadingLineBreak = false,
+		string definitionIndent = "",
+		numeric startPos = 1,
+		numeric textLength = len( arguments.template )
+	) {
+		// This cache belongs to one render, including its nested expansions. Key
+		// by source/span, not partial name: callable partials may change each time.
+		var key = List::of( arguments.template, arguments.indentation, arguments.stripLeadingLineBreak,
+			arguments.definitionIndent, arguments.startPos, arguments.textLength );
+		var prepared = arguments.state.preparedTemplates;
+		if ( prepared.containsKey( key ) ) {
+			return prepared.get( key );
+		}
+
+		var result = arguments.startPos == 1 && arguments.textLength == len( arguments.template )
+			? arguments.template : mid( arguments.template, arguments.startPos, arguments.textLength );
+		result = StringUtil::normalizeBlockSourceText( result, arguments.stripLeadingLineBreak );
+		if ( len( arguments.definitionIndent ) ) {
+			result = dedentTemplate( result, arguments.definitionIndent );
+		}
+		if ( len( arguments.indentation ) ) {
+			result = indentPartialTemplate( result, arguments.indentation );
+		}
+		prepared.put( key, result );
+		// Bound transient retention when a callable produces many unique sources.
+		if ( prepared.size() > 200 ) {
+			prepared.pollFirstEntry();
+		}
+		return result;
+	}
+
+	private string function dedentTemplate(
 		required string templateText,
 		required string indentation
 	) {
@@ -497,7 +554,7 @@ class {
 		return arrayToList( chunks, "" );
 	}
 
-	private string function _indentPartialTemplate( required string template, required string indentation ) {
+	private string function indentPartialTemplate( required string template, required string indentation ) {
 		if ( !len( arguments.template ) || !len( arguments.indentation ) ) {
 			return arguments.template;
 		}
@@ -528,7 +585,7 @@ class {
 
 	// --- Utility ---
 
-	private boolean function _isTruthy( any value = false ) {
+	private boolean function isTruthy( any value = false ) {
 		if ( isBoolean( arguments.value ) ) {
 			return arguments.value;
 		}
@@ -548,7 +605,7 @@ class {
 		return true;
 	}
 
-	private string function _escapeHtml( required string value ) {
+	private string function escapeHtml( required string value ) {
 		var escaped = replace( arguments.value, "&", "&amp;", "all" );
 		escaped = replace( escaped, "<", "&lt;", "all" );
 		escaped = replace( escaped, ">", "&gt;", "all" );
@@ -559,7 +616,7 @@ class {
 		return escaped;
 	}
 
-	private string function _toString( any value ) {
+	private string function stringifyValue( any value ) {
 		try {
 			if ( isNull( arguments.value ) ) {
 				return "";

@@ -12,14 +12,14 @@ class {
 	variables.configurationLockName = "Mustache.BIF.Renderer." & replace( createUUID(), "-", "", "all" );
 
 	function invoke( required string template, any view = {}, struct partials = {} ) {
-		return _getRenderer().render(
+		return getRenderer().render(
 			template = arguments.template,
 			view = arguments.view,
 			partials = arguments.partials
 		);
 	}
 
-	private Mustache function _getRenderer() {
+	private Mustache function getRenderer() {
 		if ( !variables.cacheConfigured ) {
 			bx:lock name=variables.configurationLockName type="exclusive" timeout="5" {
 				if ( !variables.cacheConfigured ) {

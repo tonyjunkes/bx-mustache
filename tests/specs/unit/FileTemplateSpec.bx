@@ -16,17 +16,17 @@ class extends="testbox.system.BaseSpec" {
 				var ast      = variables.mustache.parse( tokens, template );
 
 				expect( tokens ).toHaveLength( 11 );
-				expect( tokens[ 4 ].type ).toBe( "section_start" );
-				expect( tokens[ 4 ].name ).toBe( "items" );
-				expect( tokens[ 7 ].type ).toBe( "inverted_start" );
-				expect( tokens[ 11 ].type ).toBe( "partial" );
-				expect( tokens[ 11 ].name ).toBe( "itemPartial" );
+				expect( tokens[ 4 ].type ).toBeWithCase( "section_start" );
+				expect( tokens[ 4 ].name ).toBeWithCase( "items" );
+				expect( tokens[ 7 ].type ).toBeWithCase( "inverted_start" );
+				expect( tokens[ 11 ].type ).toBeWithCase( "partial" );
+				expect( tokens[ 11 ].name ).toBeWithCase( "itemPartial" );
 
 				expect( ast ).toHaveLength( 7 );
-				expect( ast[ 4 ].type ).toBe( "section" );
-				expect( ast[ 4 ].children[ 1 ].name ).toBe( "." );
-				expect( ast[ 5 ].type ).toBe( "inverted" );
-				expect( ast[ 7 ].type ).toBe( "partial" );
+				expect( ast[ 4 ].type ).toBeWithCase( "section" );
+				expect( ast[ 4 ].children[ 1 ].name ).toBeWithCase( "." );
+				expect( ast[ 5 ].type ).toBeWithCase( "inverted" );
+				expect( ast[ 7 ].type ).toBeWithCase( "partial" );
 			} );
 
 			it( "throws tokenizer errors for invalid mustache template files", function(){
@@ -48,7 +48,7 @@ class extends="testbox.system.BaseSpec" {
 					}
 				);
 
-				expect( output ).toBe( "Header|Name: Ada [Engineer]|Footer" );
+				expect( output ).toBeWithCase( "Header|Name: Ada [Engineer]|Footer" );
 			} );
 		} );
 	}

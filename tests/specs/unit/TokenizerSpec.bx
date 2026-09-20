@@ -11,6 +11,21 @@ class extends="testbox.system.BaseSpec" {
 			} );
 
 			describe( "tokenize()", function(){
+				it( "preserves positions and standalone indentation after long spans and mixed newlines", function(){
+					var prefix = repeatString( "x", 10000 ) & char( 10 );
+					var source = prefix & "{{{name}}}{{! inline }}" & char( 13 ) & char( 10 ) & "  {{>p}}" & char( 13 ) & "TAIL";
+					var tokens = variables.tokenizer.tokenize( source );
+					expect( tokens ).toHaveLength( 6 );
+					expect( tokens[ 1 ].value ).toBeWithCase( prefix );
+					expect( tokens[ 2 ].startPos ).toBe( len( prefix ) + 1 );
+					expect( tokens[ 2 ].endPos ).toBe( len( prefix ) + 10 );
+					expect( structKeyExists( tokens[ 3 ], "standalone" ) ).toBeFalse();
+					expect( tokens[ 4 ].value ).toBeWithCase( char( 13 ) & char( 10 ) );
+					expect( tokens[ 5 ].indent ).toBeWithCase( "  " );
+					expect( tokens[ 5 ].startPos ).toBe( find( "{{>p}}", source ) );
+					expect( tokens[ 6 ].value ).toBeWithCase( "TAIL" );
+				} );
+
 				it( "returns empty array for empty template", function(){
 					var tokens = variables.tokenizer.tokenize( "" );
 					expect( tokens ).toBeEmpty();

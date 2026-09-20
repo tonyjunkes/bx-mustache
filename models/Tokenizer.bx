@@ -1,3 +1,5 @@
+import bxModules.bxMustache.models.StringUtil;
+
 /**
  * Converts Mustache template text into renderer-neutral tokens.
  */
@@ -27,7 +29,7 @@ class {
 			var closeDelimiterLength = len( currentCloseDelimiter );
 			var openPos = find( currentOpenDelimiter, arguments.template, pos );
 			if ( openPos > 0 ) {
-				lineStartPos = _advanceLineStart(
+				lineStartPos = advanceLineStart(
 					arguments.template,
 					lineScanPos,
 					openPos - 1,
@@ -38,7 +40,7 @@ class {
 
 			if ( openPos == 0 ) {
 				if ( pos <= totalLen ) {
-					arrayAppend( tokens, _textToken( arguments.template, pos, totalLen ) );
+					arrayAppend( tokens, textToken( arguments.template, pos, totalLen ) );
 				}
 				break;
 			}
@@ -50,7 +52,7 @@ class {
 				&& mid( arguments.template, openPos, 3 ) == "{{{"
 			) {
 				if ( openPos > pos ) {
-					arrayAppend( tokens, _textToken( arguments.template, pos, openPos - 1 ) );
+					arrayAppend( tokens, textToken( arguments.template, pos, openPos - 1 ) );
 				}
 
 				var tripleClosePos = find( "}}}", arguments.template, openPos + 3 );
@@ -59,7 +61,7 @@ class {
 				}
 
 				var tripleName = trim( mid( arguments.template, openPos + 3, tripleClosePos - ( openPos + 3 ) ) );
-				_validateTagName( tripleName, "unescaped" );
+				validateTagName( tripleName, "unescaped" );
 				arrayAppend( tokens, {
 					type: "unescaped",
 					name: tripleName,
@@ -68,7 +70,7 @@ class {
 				} );
 
 				pos = tripleClosePos + 3;
-				lineStartPos = _advanceLineStart( arguments.template, lineScanPos, pos - 1, lineStartPos );
+				lineStartPos = advanceLineStart( arguments.template, lineScanPos, pos - 1, lineStartPos );
 				lineScanPos = pos;
 				continue;
 			}
@@ -91,12 +93,12 @@ class {
 			};
 
 			if ( len( content ) > 0 ) {
-				_classifyTag( token, content );
+				classifyTag( token, content );
 			}
-			_validateTagName( token.name, token.type );
+			validateTagName( token.name, token.type );
 
-			if ( _isStandaloneTokenType( token.type ) ) {
-				var standaloneContext = _getStandaloneTagContext(
+			if ( isStandaloneTokenType( token.type ) ) {
+				var standaloneContext = getStandaloneTagContext(
 					arguments.template,
 					pos,
 					openPos,
@@ -104,8 +106,9 @@ class {
 					lineStartPos
 				);
 				if ( standaloneContext.isStandalone ) {
+					token.standalone = true;
 					if ( standaloneContext.leadingTextLength > 0 ) {
-						arrayAppend( tokens, _textToken(
+						arrayAppend( tokens, textToken(
 							arguments.template,
 							pos,
 							pos + standaloneContext.leadingTextLength - 1
@@ -121,7 +124,7 @@ class {
 						currentOpenDelimiter = token.openDelimiter;
 						currentCloseDelimiter = token.closeDelimiter;
 					}
-					lineStartPos = _advanceLineStart(
+					lineStartPos = advanceLineStart(
 						arguments.template,
 						lineScanPos,
 						standaloneContext.nextPos - 1,
@@ -134,7 +137,7 @@ class {
 			}
 
 			if ( openPos > pos ) {
-				arrayAppend( tokens, _textToken( arguments.template, pos, openPos - 1 ) );
+				arrayAppend( tokens, textToken( arguments.template, pos, openPos - 1 ) );
 			}
 
 			arrayAppend( tokens, token );
@@ -143,14 +146,14 @@ class {
 				currentCloseDelimiter = token.closeDelimiter;
 			}
 			pos = closePos + closeDelimiterLength;
-			lineStartPos = _advanceLineStart( arguments.template, lineScanPos, pos - 1, lineStartPos );
+			lineStartPos = advanceLineStart( arguments.template, lineScanPos, pos - 1, lineStartPos );
 			lineScanPos = pos;
 		}
 
 		return tokens;
 	}
 
-	private struct function _textToken( required string template, required numeric startPos, required numeric endPos ) {
+	private struct function textToken( required string template, required numeric startPos, required numeric endPos ) {
 		return {
 			type: "text",
 			value: mid( arguments.template, arguments.startPos, arguments.endPos - arguments.startPos + 1 ),
@@ -159,9 +162,9 @@ class {
 		};
 	}
 
-	private void function _classifyTag( required struct token, required string content ) {
-		if ( _isSetDelimiterTag( arguments.content ) ) {
-			var delimiterPair = _parseDelimiterPair( arguments.content );
+	private void function classifyTag( required struct token, required string content ) {
+		if ( isSetDelimiterTag( arguments.content ) ) {
+			var delimiterPair = parseDelimiterPair( arguments.content );
 			arguments.token.type = "set_delimiter";
 			arguments.token.openDelimiter = delimiterPair.openDelimiter;
 			arguments.token.closeDelimiter = delimiterPair.closeDelimiter;
@@ -169,6 +172,9 @@ class {
 		}
 
 		var sigil = left( arguments.content, 1 );
+		if ( !find( sigil, "!></##$^&" ) ) {
+			return;
+		}
 		var body = trim( mid( arguments.content, 2, len( arguments.content ) - 1 ) );
 
 		switch ( sigil ) {
@@ -213,13 +219,8 @@ class {
 		}
 	}
 
-	private void function _validateTagName( required string name, required string tokenType ) {
-		if (
-			!arrayFind(
-				[ "variable", "unescaped", "partial", "parent_start", "section_start", "section_end", "inverted_start", "block_start" ],
-				arguments.tokenType
-			)
-		) {
+	private void function validateTagName( required string name, required string tokenType ) {
+		if ( arguments.tokenType == "comment" || arguments.tokenType == "set_delimiter" ) {
 			return;
 		}
 
@@ -231,18 +232,25 @@ class {
 		}
 	}
 
-	private boolean function _isStandaloneTokenType( required string tokenType ) {
-		return arrayFind(
-			[ "comment", "partial", "section_start", "section_end", "inverted_start", "set_delimiter" ],
-			arguments.tokenType
-		);
+	private boolean function isStandaloneTokenType( required string tokenType ) {
+		switch ( arguments.tokenType ) {
+			case "comment":
+			case "partial":
+			case "section_start":
+			case "section_end":
+			case "inverted_start":
+			case "set_delimiter":
+				return true;
+			default:
+				return false;
+		}
 	}
 
-	private boolean function _isSetDelimiterTag( required string content ) {
+	private boolean function isSetDelimiterTag( required string content ) {
 		return len( arguments.content ) >= 2 && left( arguments.content, 1 ) == "=" && right( arguments.content, 1 ) == "=";
 	}
 
-	private struct function _parseDelimiterPair( required string content ) {
+	private struct function parseDelimiterPair( required string content ) {
 		var delimiterDefinition = trim( mid( arguments.content, 2, len( arguments.content ) - 2 ) );
 		var normalizedDefinition = trim( reReplace( delimiterDefinition, "\s+", " ", "all" ) );
 		var delimiterParts = len( normalizedDefinition ) ? listToArray( normalizedDefinition, " " ) : [];
@@ -257,7 +265,7 @@ class {
 		};
 	}
 
-	private struct function _getStandaloneTagContext(
+	private struct function getStandaloneTagContext(
 		required string template,
 		required numeric currentPos,
 		required numeric openPos,
@@ -306,7 +314,7 @@ class {
 		};
 	}
 
-	private numeric function _advanceLineStart(
+	private numeric function advanceLineStart(
 		required string template,
 		required numeric startPos,
 		required numeric endPos,
@@ -316,12 +324,13 @@ class {
 		var boundedStartPos = max( 1, arguments.startPos );
 		var boundedEndPos = min( len( arguments.template ), arguments.endPos );
 
-		for ( var i = boundedStartPos; i <= boundedEndPos; i++ ) {
-			if ( mid( arguments.template, i, 1 ) == char( 13 ) || mid( arguments.template, i, 1 ) == char( 10 ) ) {
-				nextLineStartPos = i + 1;
-			}
+		if ( boundedEndPos < boundedStartPos ) {
+			return nextLineStartPos;
 		}
-
-		return nextLineStartPos;
+		// Each source span is visited once. Native searches avoid a BoxLang call
+		// for every character and remain bounded to the newly traversed text.
+		var span = mid( arguments.template, boundedStartPos, boundedEndPos - boundedStartPos + 1 );
+		var lastBreak = max( span.lastIndexOf( char( 10 ) ), span.lastIndexOf( char( 13 ) ) );
+		return lastBreak >= 0 ? boundedStartPos + lastBreak + 1 : nextLineStartPos;
 	}
 }

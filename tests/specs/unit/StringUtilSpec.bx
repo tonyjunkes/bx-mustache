@@ -11,6 +11,13 @@ class extends="testbox.system.BaseSpec" {
 			} );
 
 			describe( "getLineStartPos()", function(){
+				it( "finds the nearest mixed newline across backwards search windows", function(){
+					var source = "a" & char( 13 ) & repeatString( "b", 600 ) & char( 10 ) & repeatString( "c", 300 );
+					expect( variables.su.getLineStartPos( source, 603 ) ).toBe( 3 );
+					expect( variables.su.getLineStartPos( source, len( source ) + 1 ) ).toBe( 604 );
+					expect( variables.su.getLineStartPos( repeatString( "x", 600 ), 601 ) ).toBe( 1 );
+				} );
+
 				it( "returns 1 for position 1", function(){
 					expect( variables.su.getLineStartPos( "hello", 1 ) ).toBe( 1 );
 				} );
@@ -53,32 +60,6 @@ class extends="testbox.system.BaseSpec" {
 				it( "returns 1 for positions before any line break", function(){
 					var template = "abc#char( 10 )#def";
 					expect( variables.su.getLineStartPos( template, 3 ) ).toBe( 1 );
-				} );
-			} );
-
-			describe( "findLastPosition()", function(){
-				it( "returns 0 when needle is not found", function(){
-					expect( variables.su.findLastPosition( "x", "hello" ) ).toBe( 0 );
-				} );
-
-				it( "returns 1-based position of the single occurrence", function(){
-					expect( variables.su.findLastPosition( "l", "hello" ) ).toBe( 4 );
-				} );
-
-				it( "returns position of the last occurrence", function(){
-					expect( variables.su.findLastPosition( "a", "abracadabra" ) ).toBe( 11 );
-				} );
-
-				it( "works with an empty haystack", function(){
-					expect( variables.su.findLastPosition( "x", "" ) ).toBe( 0 );
-				} );
-
-				it( "works with multi-character needles", function(){
-					expect( variables.su.findLastPosition( "ab", "zabzab" ) ).toBe( 5 );
-				} );
-
-				it( "finds the final overlapping multi-character match", function(){
-					expect( variables.su.findLastPosition( "aba", "ababa" ) ).toBe( 3 );
 				} );
 			} );
 
